@@ -198,7 +198,7 @@ def meta_parser():
     timelist = []
     for timepoint in range (imageCount):
         times = omeMeta.getImageAcquisitionDate(timepoint)
-        
+        print type(times)
         timelist.append(times.toString())
 	
 	
@@ -345,7 +345,7 @@ def Composite_Aligner(channels, dirs):
 	p.sift.initialSigma = 1.2
 	p.maxEpsilon = 15
 	
-	p.sift.steps = 12
+	p.sift.steps = 8
 	
 	# The 2ch images have a ton of features,
     # sift feature detection sensitivity is 
@@ -802,7 +802,7 @@ def Overlayer(org_size, dirs):
 			
 	# Opens overlaid images, saves as tiff stack.
 	overlay_stack = IJ.run("Image Sequence...", "open="+dirs["Overlays"]+
-					       " number=300 starting=0 increment=1 scale=300 file=.tif sort")
+					       " number=3040 starting=0 increment=1 scale=300 file=.tif sort")
 	
 	# Takes care of spaces in titles. 
 	tiftitle = Title.replace(" ", "_")
@@ -895,154 +895,166 @@ def user_input():
 
 
 def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
-	""" Plots all calculated values, saves plots to generated directory, returns plot scale. """
+    """ Plots all calculated values, saves plots to generated directory, returns plot scale. """
 
-	Mean_plot = 0
-	# Flatten nested lists (normalized lists are not nested).
-	if value_type == "Mean norm aFRET self":	
-		values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
-		Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
-		Mean_sd = [item for sublist in Mean_sd for item in sublist]
-		Mean_plot = 1
-	elif value_type == "Mean norm dFRET self":
-		values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
-		Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
-		Mean_sd = [item for sublist in Mean_sd for item in sublist]
-		Mean_plot = 1
+    Mean_plot = 0
+    # Flatten nested lists (normalized lists are not nested).
+    if value_type == "Mean norm aFRET self":    
+        values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
+        Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
+        Mean_sd = [item for sublist in Mean_sd for item in sublist]
+        Mean_plot = 1
+    elif value_type == "Mean norm dFRET self":
+        values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
+        Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
+        Mean_sd = [item for sublist in Mean_sd for item in sublist]
+        Mean_plot = 1
 
-	else:
-		if "Normalized" not in value_type:
-			values = [item for sublist in values for item in sublist]
+    else:
+        if "Normalized" not in value_type:
+            values = [item for sublist in values for item in sublist]
 
-	#Repeats list items x cell_number (match timepoints with # of cells).
-	timelist = [x for item in timelist for x in repeat(item, Cell_number)]
+    #Repeats list items x cell_number (match timepoints with # of cells).
+    timelist = [x for item in timelist for x in repeat(item, Cell_number)]
 
-	# Scaling of plots.
-	max_Y = 1
-	if max(values) > 3:
-		if not isinstance(values[0], list):
-			max_Y = max(values)*1.3
-	elif max(values) > 2.5:
-		max_Y = 3.3
-	elif max(values) > 2:
-		max_Y = 2.7
-	elif max(values) > 1.5:
-		max_Y = 2.2
-	elif max(values) > 1.3:
-		max_Y = 1.7
-	elif max(values) > 1:
-		max_Y = 1.4
+    # Scaling of plots.
+    max_Y = 1
+    if max(values) > 3:
+        if not isinstance(values[0], list):
+            max_Y = max(values)*1.3
+    elif max(values) > 2.5:
+        max_Y = 3.3
+    elif max(values) > 2:
+        max_Y = 2.7
+    elif max(values) > 1.5:
+        max_Y = 2.2
+    elif max(values) > 1.3:
+        max_Y = 1.7
+    elif max(values) > 1:
+        max_Y = 1.4
 
 
-	min_Y = 0
-	if min(values) > 2:
-		min_Y = min(values)*0.8
-	elif min(values) > 1.5:
-	    min_Y = 1.5
-	elif min(values) > 1:
-	    min_Y = 1
-	elif min(values) > 0.5:	
-	    min_Y = 0.2
-			
-	elif min(values) < -0.5:
-		min_Y = min(values)*1.3
-	elif min(values) < -0.2:
-	    min_Y = -0.3
-	elif min(values) < -0.1:
-	    min_Y = -0.15
-	elif min(values) < -0.08:
-	    min_Y = -0.1
-	elif min(values) < -0.05:
-	    min_Y = -0.08
-	elif min(values) < -0.01:
-	    min_Y = -0.06
+    min_Y = 0
+    if min(values) > 2:
+        min_Y = min(values)*0.8
+    elif min(values) > 1.5:
+        min_Y = 1.5
+    elif min(values) > 1:
+        min_Y = 1
+    elif min(values) > 0.5: 
+        min_Y = 0.2
+                    
+    elif min(values) < -0.5:
+        min_Y = min(values)*1.3
+    elif min(values) < -0.2:
+        min_Y = -0.3
+    elif min(values) < -0.1:
+        min_Y = -0.15
+    elif min(values) < -0.08:
+        min_Y = -0.1
+    elif min(values) < -0.05:
+        min_Y = -0.08
+    elif min(values) < -0.01:
+        min_Y = -0.06
 
-	# Scaling of normalized plots..
-	if "Normalized" in value_type:
-		max_Y, min_Y = 1.75, 0.4
+    # Scaling of normalized plots..
+    if "Normalized" in value_type:
+        max_Y, min_Y = 1.75, 0.4
 
-	if value_type == "dFRET":
-		max_Y = 0.65
-		min_y = 0.0
-	elif value_type =="aFRET":
-		max_Y = 0.65
-		min_Y = 0.0
+    if value_type == "dFRET":
+        max_Y = 0.65
+        min_y = 0.0
+    elif value_type =="aFRET":
+        max_Y = 0.65
+        min_Y = 0.0
 
-	# Call plot, set scale.
-	plot = Plot(Title, "Time (minutes)", value_type)
-	plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
-	# Retrieve colors.
-	Colors, Colors_old = colorlist()
+    # Call plot, set scale.
+    plot = Plot(Title, "Time (minutes)", value_type)
+    plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+    # Retrieve colors.
+    Colors, Colors_old = colorlist()
 
-	# Set colors, plot points.
-	if Mean_plot == 0:
-	    for i in range(Cell_number):
-		    if i < 19:
-			    plot.setColor(Color(*Colors[i][0:3]))
-		    elif i >= 19:
-			    plot.setColor(eval(Colors_old[i]))
-			    print "Out of fancy colors, using java.awt.color defaults"
-		    elif i > 28:
-			    print "29 color limit exceeded"
-			    return
-			    
-	            plot.setLineWidth(1.5)
-	            plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.LINE)
-	            plot.setLineWidth(1)
-	
-	            # Comment in to define color + fillcolor for circles.
-	            plot.setColor(Color(*Colors[i][0:3]), Color(*Colors[i][0:3]))
-	            plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.CIRCLE)
-	else:
-		min_Y, max_Y = 0.6, 1.6
-		plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
-		plot.setColor("Color.BLACK")
-		plot.setLineWidth(1.5)
-		plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.LINE)
-		plot.setLineWidth(1)
-		plot.setColor("Color.BLACK", "Color.BLACK")
-		plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.CIRCLE)
-		plot.setColor(Color(*Colors[6][0:3]))
-		plot.addErrorBars(Mean_sd[1::2])
+    # Set colors, plot points.
+    if Mean_plot == 0:
+        for i in range(Cell_number):
+            if i < 19:
+                plot.setColor(Color(*Colors[i][0:3]))
+            elif i >= 19:
+                plot.setColor(eval(Colors_old[i]))
+                print "Out of fancy colors, using java.awt.color defaults"
+            elif i > 28:
+                print "29 color limit exceeded"
+                return
+                    
+            plot.setLineWidth(1.5)
+            plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.LINE)
+            plot.setLineWidth(1)
 
-	# Get's stim name from input.
-	text = [ sublist[i] for sublist in Stim_List for i in range(len(Stim_List)) ]
-	Stim_List = [ sublist[1:] for sublist in Stim_List ]
+            # Comment in to define color + fillcolor for circles.
+            plot.setColor(Color(*Colors[i][0:3]), Color(*Colors[i][0:3]))
+            #plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.CIRCLE)
+    else:
+        min_Y, max_Y = 0.6, 1.6
+        plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+        plot.setColor("Color.BLACK")
+        plot.setLineWidth(1.5)
+        plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.LINE)
+        plot.setLineWidth(1)
+        plot.setColor("Color.BLACK", "Color.BLACK")
+        #plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.CIRCLE)
+        plot.setColor(Color(*Colors[6][0:3]))
+        plot.addErrorBars(Mean_sd[1::2])
 
-	# Plot stimulation markers. 
-	plot.setLineWidth(2)
-	for sublist in Stim_List:
-	    plot.setColor("Color.GRAY")
-	    plot.drawLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[1], min_Y+((max_Y-min_Y) * 0.82))
-	    plot.drawDottedLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[0], -1, 4)
-	    plot.drawDottedLine(sublist[1], min_Y+((max_Y-min_Y) * 0.82), sublist[1], -1, 4)
-	    plot.setFont(Font.BOLD, 16)
-	    plot.addText(text[0], sublist[0], min_Y+((max_Y-min_Y) * 0.82))
+    # Get's stim name from input.
+    text = [ sublist[i] for sublist in Stim_List for i in range(len(Stim_List)) ]
+    Stim_List = [ sublist[1:] for sublist in Stim_List ]
+
+    # Plot stimulation markers. 
+    plot.setLineWidth(2)
+    for sublist in Stim_List:
+        plot.setColor("Color.GRAY")
+        plot.drawLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[1], min_Y+((max_Y-min_Y) * 0.82))
+        plot.drawDottedLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[0], -1, 4)
+        plot.drawDottedLine(sublist[1], min_Y+((max_Y-min_Y) * 0.82), sublist[1], -1, 4)
+        plot.setFont(Font.BOLD, 16)
+        plot.addText(text[0], sublist[0], min_Y+((max_Y-min_Y) * 0.82))
+
+    cell_num = 0
+    if "concentration" not in value_type:
+        testfile = open(os.path.join(dirs["Tables"], value_type + ".txt"), "w")
+        data = plot.getResultsTable()
+        headings = data.getHeadings()
+        datadict = {}
+        for heading in headings:
+            
+            index = data.getColumnIndex(heading)
+            if "Y" in heading:
+                column = { "Cell "+str(cell_num).zfill(2) : [round(float(i), 4) for i in data.getColumn(index)] }
+            elif "X" in heading:
+                column = {"X" : [round(float(i), 4) for i in data.getColumn(index)] }
+            cell_num += 1
+            datadict.update(column)
+        for key, value in datadict.iteritems():#1B2631
+            testfile.write("\n" + key + "\n" + "\t".join([str(round(x, 4)) for x in value]))
+            
+        with open(os.path.join(dirs["Tables"], value_type + ".json"), "w") as outfile:
+            datadict["Stim"] = Stim_List
+            json.dump(datadict, outfile, sort_keys=True)
+
+        testfile.close()
+
+
+    # Generate High-res plot with anti-aliasing (Scale x 1). 
+    plot = plot.makeHighResolution(Title, 1, True, True)    
+    #PlotWindow.noGridLines = True
+
+    # Save plot with appropriate title.
+    IJ.saveAs(plot, "PNG", os.path.join(dirs["Plots"], str(Title)+str(value_type)))
+
+    # (For ratiometric image-generator)
+    return max_Y, min_Y
 
     
-	if "concentration" not in value_type:
-		testfile = open(os.path.join(dirs["Tables"], value_type + ".txt"), "w")
-		data = plot.getResultsTable()
-		headings = data.getHeadings()
-		datadict = {}
-		for heading in headings:
-			index = data.getColumnIndex(heading)
-			column = { heading : data.getColumn(index) }
-			datadict.update(column)
-		for key, value in datadict.iteritems():
-			testfile.write("\n" + key + "\n" + "\t".join([str(round(x, 4)) for x in value]))
-
-		testfile.close()
-	
-	# Generate High-res plot with anti-aliasing (Scale x 1). 
-	plot = plot.makeHighResolution(Title, 1, True, True)	
-	#PlotWindow.noGridLines = True
-
-	# Save plot with appropriate title.
-	IJ.saveAs(plot, "PNG", os.path.join(dirs["Plots"], str(Title)+str(value_type)))
-
-	# (For ratiometric image-generator)
-	return max_Y, min_Y
 
 	
 def ratiometric(LP, org_size, max_Y, min_Y):
