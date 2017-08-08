@@ -50,115 +50,124 @@ from ij.plugin import ImageCalculator
 from ij.plugin import Duplicator
 
 def FRET_analyser():
-	""" Master method and tabulator. """
+    """ Master method and tabulator. """
 
-	# Analysis timer, start.
-	startTime = datetime.now()
+    # Analysis timer, start.
+    startTime = datetime.now()
 
-	# Metadata parser	
-	channels, timepoints, timelist, timelist_unsorted, LP, org_size = meta_parser()
-		
-	# User inputs
-	Input_data, Input_data_JSON, Stim_List = user_input()
+    # Metadata parser    
+    channels, timepoints, timelist, timelist_unsorted, LP, org_size = meta_parser()
+            
+    # User inputs
+    Input_data, Input_data_JSON, Stim_List = user_input()
 
     # Directory spawner.
-	dirs = directorator(Title, str(Root))	
-	
-	# Projections
-	imageprojector(channels, timelist_unsorted, dirs)
-		
-	# Composite image generator
-	Compositor(timepoints, channels, dirs)
+    dirs = directorator(Title, str(Root))   
+    
+    # Projections
+    imageprojector(channels, timelist_unsorted, dirs)
+            
+    # Composite image generator
+    Compositor(timepoints, channels, dirs)
 
-	# Background subtracter.
-	Backgroundremoval(dirs)
-	
-	# Composite image aligner.
-	Composite_Aligner(channels, dirs)
-		
-	# Raw image transformer (registration).
-	Transformer(channels, dirs)
-	
-	# Composite image segmentation.
-	segmentation = Weka_Segm(dirs)
-	
+    # Background subtracter.
+    Backgroundremoval(dirs)
+    
+    # Composite image aligner.
+    Composite_Aligner(channels, dirs)
+            
+    # Raw image transformer (registration).
+    Transformer(channels, dirs)
+    
+    # Composite image segmentation.
+    segmentation = Weka_Segm(dirs)
+    
 
-	
-	# seFRET/3-channel mode. Calls measurement method, 
-	# performs calculations, writes results to txt table,
-	# calls for plots, gifs and ratiometric image generation.
-	if channels == 3:
-		# Measurements and calculations.
-		FRET_values = Measurements(channels, timelist, dirs)
-		
-		cFRET, dFRET, aFRET, Raw_ratio, dtoa, A_Conc, norm_aFRET, norm_dFRET, norm_raw, norm_aFRET_self, norm_dFRET_self, norm_raw_self = three_cube(FRET_values, LP)
+    
+    # seFRET/3-channel mode. Calls measurement method, 
+    # performs calculations, writes results to txt table,
+    # calls for plots, gifs and ratiometric image generation.
+    if channels == 3:
+        # Measurements and calculations.
+        raw_data = Measurements(channels, timelist, dirs)   
+        FRET_val = three_cube(raw_data, LP)
 
-		# Tabulator.
-		results_table = []
- 		table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
+        # Tabulator.
+        results_table = []
+        table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
 
-		[[results_table.append([a, b, c, d, e, f])for a, b, c, d, e, f in zip(s1,s2,s3,s4,s5,s6)]
-		for s1,s2,s3,s4,s5,s6 in zip(Raw_ratio, cFRET, dFRET, aFRET, FRET_values["Slices"], FRET_values["Time"])]
-								
-		table.write("\t\t\t".join(map(str,["Raw", "cFRET", "dFRET", "aFRET", "Slice", "Time "])))
-		table.write(("_")*128)
-		for line in range (len(results_table)):
-			table.write("\n")
-			table.write("\n")
-			table.write("\t\t\t".join(map(str,results_table[line])))
+        [[results_table.append([a, b, c, d, e, f])for a, b, c, d, e, f in zip(s1,s2,s3,s4,s5,s6)]
+        for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], FRET_val["cFRET"], FRET_val["dFRET"], 
+                                     FRET_val["aFRET"], raw_data["Slices"], raw_data["Time"])]
+                                                        
+        table.write("\t\t\t".join(map(str,["Raw", "cFRET", "dFRET", "aFRET", "Slice", "Time "])))
+        table.write(("_")*128)
+        for line in range (len(results_table)):
+            table.write("\n")
+            table.write("\n")
+            table.write("\t\t\t".join(map(str,results_table[line])))
 
-		table.close()
+        table.close()
+        for FRET_value_ID, FRET_value in FRET_val.iteritems():
+            plots(FRET_value, timelist, raw_data["Cell_num"],
+                  FRET_value_ID, Stim_List, dirs)
+    
+        
+        # Plots ahoy.
+        max_Y, min_Y = plots(FRET_val["Raw"], timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs)
+        """
+        plots(FRET_val["dFRET"], timelist, raw_data["Cell_num"], "dFRET", Stim_List, dirs)
+        plots(FRET_val["aFRET"], timelist, raw_data["Cell_num"], "aFRET", Stim_List, dirs)
+        plots(FRET_val["dtoa"], timelist, raw_data["Cell_num"], "Donor to Acceptor ratio", Stim_List, dirs)
+        plots(FRET_val["norm_aFRET"], timelist, raw_data["Cell_num"], "Normalized aFRET", Stim_List, dirs)
+        plots(FRET_val["norm_dFRET"], timelist, raw_data["Cell_num"], "Normalized dFRET", Stim_List, dirs)
 
-		# Plots ahoy.
-		max_Y, min_Y = plots(Raw_ratio, timelist, FRET_values["Cell_num"], "Raw", Stim_List, dirs)
-		plots(dFRET, timelist, FRET_values["Cell_num"], "dFRET", Stim_List, dirs)
-		plots(aFRET, timelist, FRET_values["Cell_num"], "aFRET", Stim_List, dirs)
-		plots(dtoa, timelist, FRET_values["Cell_num"], "Donor to Acceptor ratio", Stim_List, dirs)
-		plots(norm_aFRET, timelist, FRET_values["Cell_num"], "Normalized aFRET", Stim_List, dirs)
-		plots(norm_dFRET, timelist, FRET_values["Cell_num"], "Normalized dFRET", Stim_List, dirs)
+        #plots(norm_raw, timelist, Cell_number, Title, "Normalized raw", Stim_List)
+        plots(norm_aFRET_self, timelist, raw_data["Cell_num"], "Mean norm aFRET self", Stim_List, dirs)
+        plots(norm_dFRET_self, timelist, raw_data["Cell_num"], "Mean norm dFRET self", Stim_List, dirs)
+        """
+        # Corrects donor concentration, plots concentrations.
+        IDD_list = [ [ IDD + CFRET for (IDD, CFRET) in zip(x, y) ] 
+                   for (x, y) in zip(raw_data["IDD"], Fret_val["cFRET"]) ]
 
-		#plots(norm_raw, timelist, Cell_number, Title, "Normalized raw", Stim_List)
-		plots(norm_aFRET_self, timelist, FRET_values["Cell_num"], "Mean norm aFRET self", Stim_List, dirs)
-		plots(norm_dFRET_self, timelist, FRET_values["Cell_num"], "Mean norm dFRET self", Stim_List, dirs)
+        plots(IDD_list, timelist, raw_data["Cell_num"], "Donor concentration", Stim_List, dirs)
+        #plots(A_Conc, timelist, raw_data["Cell_num"], "Acceptor concentration", Stim_List, dirs)
 
-		# Corrects donor concentration, plots concentrations.
-		IDD_list = [ [ IDD + CFRET for (IDD, CFRET) in zip(x, y) ] for (x, y) in zip(FRET_values["IDD"], cFRET) ]
-		plots(IDD_list, timelist, FRET_values["Cell_num"], "Donor concentration", Stim_List, dirs)
-		plots(A_Conc, timelist, FRET_values["Cell_num"], "Acceptor concentration", Stim_List, dirs)
 
-	# Ratiometric/2-channel mode. Same as for 3ch with less calculations.
-	elif channels == 2:
-		FRET_values = Measurements(channels, timelist, dirs)
-		Raw_ratio, Sergei_ratio, norm_raw, norm_Sergei= Ratiometric(FRET_values)
 
-		
-		results_table = []
- 		table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
+    # Ratiometric/2-channel mode. Same as for 3ch with less calculations.
+    elif channels == 2:
+        raw_data = Measurements(channels, timelist, dirs)
+        Raw_ratio, Sergei_ratio, norm_raw, norm_Sergei= Ratiometric(raw_data)
 
-		[[results_table.append([a, b, c, d])for a, b, c, d in zip(s1,s2,s3,s4)]
-		for s1,s2,s3,s4 in zip(Raw_ratio, Sergei_ratio, FRET_values["Slices"], FRET_values["Time"])]
+        
+        results_table = []
+        table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
 
-		table.write("\t\t".join(map(str,["Raw", "Sergei", "Slice", "Time"])))
-		for line in range (len(results_table)):
-			table.write("\n")
-			table.write("\t\t".join(map(str,results_table[line])))
+        [[results_table.append([a, b, c, d])for a, b, c, d in zip(s1,s2,s3,s4)]
+        for s1,s2,s3,s4 in zip(Raw_ratio, Sergei_ratio, raw_data["Slices"], raw_data["Time"])]
 
-		table.close()
+        table.write("\t\t".join(map(str,["Raw", "Sergei", "Slice", "Time"])))
+        for line in range (len(results_table)):
+            table.write("\n")
+            table.write("\t\t".join(map(str,results_table[line])))
 
-		plots(Raw_ratio, timelist, FRET_values["Cell_num"], "Raw", Stim_List, dirs)
-		plots(Sergei_ratio, timelist, FRET_values["Cell_num"], "Sergei", Stim_List, dirs)
-		plots(norm_Sergei, timelist, FRET_values["Cell_num"], "Normalized Sergei", Stim_List, dirs)
-		plots(norm_raw, timelist, FRET_values["Cell_num"], "Normalized Raw", Stim_List, dirs)
+        table.close()
 
-	# Scale, ROI color coded overlay and gif animation.
-	Overlayer(org_size, dirs)
+        plots(Raw_ratio, timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs)
+        plots(Sergei_ratio, timelist, raw_data["Cell_num"], "Sergei", Stim_List, dirs)
+        plots(norm_Sergei, timelist, raw_data["Cell_num"], "Normalized Sergei", Stim_List, dirs)
+        plots(norm_raw, timelist, raw_data["Cell_num"], "Normalized Raw", Stim_List, dirs)
 
-	# Ratiometric image generator.
-	#ratiometric(LP, org_size, max_Y, min_Y)
+    # Scale, ROI color coded overlay and gif animation.
+    Overlayer(org_size, dirs)
 
-	# Done, prints/logs time used.
-   	print ("Finished analysis in: "+str(datetime.now()-startTime))
-   	IJ.log("Finished analysis in: "+str(datetime.now()-startTime))
+    # Ratiometric image generator.
+    #ratiometric(LP, org_size, max_Y, min_Y)
+
+    # Done, prints/logs time used.
+    print ("Finished analysis in: "+str(datetime.now()-startTime))
+    IJ.log("Finished analysis in: "+str(datetime.now()-startTime))
    	
 
 def meta_parser():
@@ -533,27 +542,27 @@ def Measurements(channels, timelist, dirs):
 		IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]	
 		IAA_list = [ Cells [index] for index in Cells_indices [2::int(channels)] ]
 		
-		FRET_values = {"IDD" : IDD_list, "IDA" : IDA_list, "IAA" : IAA_list,
-				  	   "Cell_num" : Cell_number, "Slices" : Slices,
-				       "Time" : time
-				       }
+		raw_data = {"IDD" : IDD_list, "IDA" : IDA_list, "IAA" : IAA_list,
+				  	"Cell_num" : Cell_number, "Slices" : Slices,
+				    "Time" : time
+				    }
 	
 	
 	elif channels == 2:
 		IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
 		IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]
 		
-		FRET_values = {"IDD": IDD_list, "IDA" : IDA_list,
-					   "Cell_num" : Cell_number, "Slices" : Slices,
-					   "Time" : time
-					   }
+		raw_data = {"IDD": IDD_list, "IDA" : IDA_list,
+					"Cell_num" : Cell_number, "Slices" : Slices,
+					"Time" : time
+				    }
 
-	return FRET_values
+	return raw_data
 	
 
-def three_cube(FRET_values, LP):
+def three_cube(raw_data, LP):
     """ Performs calculations on nested list data from three channels, 
-            returns calculations as nested lists. """
+        returns calculations as nested lists. """
     
     # Direct excitation of acceptor, AER, and 
     # donor emission bleedthrough, DER, cofficients.
@@ -561,9 +570,9 @@ def three_cube(FRET_values, LP):
     AER = ((8.8764*(LP**2)) + (1.8853*LP)) - 0.1035 
     DER = 0.1586
 
-    IDD_list, IDA_list, IAA_list = FRET_values["IDD"], FRET_values["IDA"], FRET_values["IAA"]
+    IDD_list, IDA_list, IAA_list = raw_data["IDD"], raw_data["IDA"], raw_data["IAA"]
     
-    Cell_number = FRET_values["Cell_num"]
+    Cell_number = raw_data["Cell_num"]
     
     # Calculations.
     Raw_ratio = [ [ IDA / IDD for (IDA, IDD) in zip(x, y) ] for (x, y) in zip(IDA_list, IDD_list) ]
@@ -591,12 +600,10 @@ def three_cube(FRET_values, LP):
 
     aFRET_base = flat_aFRET [0:Cell_number]
     aFRET_base_mean = standard_deviation(aFRET_base)
-    print aFRET_base_mean
-    print aFRET_base
+    
     dFRET_base = flat_dFRET [0:Cell_number]
     dFRET_base_mean = standard_deviation(dFRET_base)
-    print dFRET_base_mean
-    print dFRET_base
+
     
     """ Calculates baseline-normalized values. """
     norm_aFRET, norm_aFRET_self = [], []
@@ -647,17 +654,24 @@ def three_cube(FRET_values, LP):
     
     A_Conc = [ [ (IAA * AER) for (IAA) in x ] for x in IAA_list ]
 
-    return cFRET, dFRET, aFRET, Raw_ratio, dtoa, A_Conc, norm_aFRET, norm_dFRET, norm_raw, norm_aFRET_self, norm_dFRET_self, norm_raw_self
+    # TODO: REMOVE UNWANTED PLOT VALUES, cFRET GOES SOLO
+    FRET_val = {"cFRET" : cFRET, "dFRET" : dFRET, "aFRET" : aFRET,
+                "Raw" : Raw_ratio, "DtoA" : dtoa, "A_Conc" : A_Conc,
+                "Normalized aFRET" : norm_aFRET, "Normalized dFRET" : norm_dFRET, 
+                "Normalized raw" : norm_raw, "Normalized aFRET mean" : norm_aFRET_self,
+                "Normalized dFRET mean" : norm_dFRET_self, "Normalized raw mean": norm_raw_self
+                }
     
+    return FRET_val
     
 
 
-def Ratiometric(FRET_values):
+def Ratiometric(raw_data):
     """ Performs calculations on nested list data from two channels, 
         returns calculations as nested lists. """
 
-    IDD_list, IDA_list = FRET_values["IDD"], FRET_values["IDA"]
-    Cell_number = FRET_values["Cell_num"]
+    IDD_list, IDA_list = raw_data["IDD"], raw_data["IDA"]
+    Cell_number = raw_data["Cell_num"]
     # Calculations
     Raw_ratio = [ [ IDA / IDD for (IDA, IDD) in zip(x, y) ] 
                     for (x, y) in zip(IDA_list, IDD_list) ]
@@ -900,12 +914,12 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
 
     Mean_plot = 0
     # Flatten nested lists (normalized lists are not nested).
-    if value_type == "Mean norm aFRET self":    
+    if value_type == "Normalized aFRET mean":    
         values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
         Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
         Mean_sd = [item for sublist in Mean_sd for item in sublist]
         Mean_plot = 1
-    elif value_type == "Mean norm dFRET self":
+    elif value_type == "Normalized dFRET mean":
         values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
         Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
         Mean_sd = [item for sublist in Mean_sd for item in sublist]
@@ -1035,7 +1049,7 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
                 column = {"X" : [round(float(i), 4) for i in data.getColumn(index)] }
             cell_num += 1
             datadict.update(column)
-        for key, value in datadict.iteritems():#1B2631
+        for key, value in datadict.iteritems():
             testfile.write("\n" + key + "\n" + "\t".join([str(round(x, 4)) for x in value]))
             
         with open(os.path.join(dirs["Tables"], value_type + ".json"), "w") as outfile:
