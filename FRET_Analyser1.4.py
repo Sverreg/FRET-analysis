@@ -1,6 +1,7 @@
 # @String(label="Experiment Title", description="Set the title of your experiment") Title
 # @File(label="Select a file") Experiment
 # @File(label="Select Root directory", style="directory") Root
+# @File(label="Select Image Classifier") classifier
 # @Integer(label="Control series: ", description="The number of baseline measurements", value=3) Control_num
 from math import *
 import os
@@ -420,7 +421,7 @@ def Weka_Segm(dirs):
 	weka.setTrainingImage(trainer)
 	
 	# Select classifier model.
-	weka.loadClassifier(os.path.join(str(Root), "Classifiers", "Composite_classifier.model"))
+	weka.loadClassifier(str(classifier))
      
 	weka.applyClassifier(False)
 	segmentation = weka.getClassifiedImage()
