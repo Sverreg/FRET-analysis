@@ -494,7 +494,7 @@ def Measurements(channels, timelist, dirs):
 	# Close.
 	imp = WindowManager.getCurrentImage()
 	imp.close()
-
+    # yada
 	# Get measurement results.
 	rt = ResultsTable.getResultsTable()
 	Area = rt.getColumn(0)
