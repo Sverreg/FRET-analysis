@@ -6,7 +6,7 @@ from java.awt import Panel
 from java.util import Vector
 import ConfigParser
 import os
-
+import sys
 def settings():
     """ Settings """
 
@@ -49,9 +49,10 @@ def settings():
     #gd.setLocation(0,1000)
     
     gd.showDialog()
-
+    
+    # Checks if cancel was pressed, kills script.
     if gd.wasCanceled() is True:
-        return False
+        sys.exit("Settings was cancelled, try again")
 
     parameters = {"Steps" : gd.getNextNumber(), 
                  "Max_oct" : gd.getNextNumber(),
@@ -78,6 +79,7 @@ def settings():
 
 
 def config_write(parameters):
+    
     config = ConfigParser.RawConfigParser()
     config.add_section("Parameters")
 
@@ -92,26 +94,44 @@ def config_write(parameters):
 
 
 def config_read():
+    """ Config file reader, returns parameters from config file. """
+
+    # Launch parser, set path to cfg file.
     config = ConfigParser.RawConfigParser()
-    con_path = os.path.join(str(Root), "example.cfg")
-    
-    if os.path.exists(con_path):
+    con_path = os.path.join(str(Root), "examle.cfg")
+
+    # Read config if .cfg exists.
+    if os.path.exists(con_path):        
         config.read(con_path)
-        steps = config.getfloat("Parameters", "Steps")
-        """
+
+        # Read cfg section, return False if section ein't reel
         try:
-            an_int = config.getint("Section2", "an_int")
-        except ConfigParser.NoSectionError:
-            print "No such section exists..."
-            pass
-        
-        """
-        print steps
-    #return parameters
+            p_list = config.items("Parameers")
+        except ConfigParser.NoSectionError:       
+            print ("NoSectionError: "
+                   "Section 'Parameters' not found, please "
+                   "check (" + str(con_path) + ") for the "
+                   "correct section name, or change the "
+                   "section name in config_read()"
+                   )
+            raise
+
+        # Build dict. of parameters.
+        parameters = {}
+        for key, value in p_list:
+            parameters[key] = value
+    else:
+        print ("ERROR: Config file not found, check " + str(con_path) + " "
+               "or select Advanced Settings to generate a new config file "
+               )
+        raise IOError("ERROR: Config file not found, check " + str(con_path) + " "
+                      "or select Advanced Settings to generate a new config file "
+                      )
+    return parameters
 
 settings()
 
-config_read()
+#config_read()
 
 
 
