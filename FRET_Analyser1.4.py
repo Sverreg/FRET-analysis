@@ -3,6 +3,8 @@
 # @File(label="Select Root directory", style="directory") Root
 # @File(label="Select Image Classifier") classifier
 # @Integer(label="Control series: ", description="The number of baseline measurements", value=3) Control_num
+# @Boolean(label="Advanced settings", description="Set processing parameters", value=False) Adv_set
+
 from math import *
 import os
 import collections
@@ -44,8 +46,10 @@ from ij.gui import Plot
 from ij.gui import WaitForUserDialog
 from java.awt import Color
 from java.awt import Dimension
-import time
+from java.awt import Panel
+from java.util import Vector
 from java.awt import Font
+import time
 from ij.plugin import ImageCalculator
 from ij.plugin import Duplicator
 
@@ -55,6 +59,10 @@ def FRET_analyser():
     # Analysis timer, start.
     startTime = datetime.now()
 
+    # Parameter method.
+    if Adv_set is True:
+        settings()
+    
     # Metadata parser    
     channels, timepoints, timelist, timelist_unsorted, LP, org_size = meta_parser()
             
@@ -90,14 +98,14 @@ def FRET_analyser():
     if channels == 3:
         # Measurements and calculations.
         raw_data = Measurements(channels, timelist, dirs)   
-        FRET_val = three_cube(raw_data, LP)
+        FRET_val, cFRET = three_cube(raw_data, LP)
 
         # Tabulator.
         results_table = []
         table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
 
         [[results_table.append([a, b, c, d, e, f])for a, b, c, d, e, f in zip(s1,s2,s3,s4,s5,s6)]
-        for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], FRET_val["cFRET"], FRET_val["dFRET"], 
+        for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], cFRET, FRET_val["dFRET"], 
                                      FRET_val["aFRET"], raw_data["Slices"], raw_data["Time"])]
                                                         
         table.write("\t\t\t".join(map(str,["Raw", "cFRET", "dFRET", "aFRET", "Slice", "Time "])))
@@ -128,7 +136,7 @@ def FRET_analyser():
         """
         # Corrects donor concentration, plots concentrations.
         IDD_list = [ [ IDD + CFRET for (IDD, CFRET) in zip(x, y) ] 
-                   for (x, y) in zip(raw_data["IDD"], Fret_val["cFRET"]) ]
+                   for (x, y) in zip(raw_data["IDD"], cFRET) ]
 
         plots(IDD_list, timelist, raw_data["Cell_num"], "Donor concentration", Stim_List, dirs)
         #plots(A_Conc, timelist, raw_data["Cell_num"], "Acceptor concentration", Stim_List, dirs)
@@ -655,14 +663,15 @@ def three_cube(raw_data, LP):
     A_Conc = [ [ (IAA * AER) for (IAA) in x ] for x in IAA_list ]
 
     # TODO: REMOVE UNWANTED PLOT VALUES, cFRET GOES SOLO
-    FRET_val = {"cFRET" : cFRET, "dFRET" : dFRET, "aFRET" : aFRET,
-                "Raw" : Raw_ratio, "DtoA" : dtoa, "A_Conc" : A_Conc,
-                "Normalized aFRET" : norm_aFRET, "Normalized dFRET" : norm_dFRET, 
-                "Normalized raw" : norm_raw, "Normalized aFRET mean" : norm_aFRET_self,
-                "Normalized dFRET mean" : norm_dFRET_self, "Normalized raw mean": norm_raw_self
+    FRET_val = {"dFRET" : dFRET, "aFRET" : aFRET,
+                "Raw" : Raw_ratio, "DtoA" : dtoa, 
+                "A_Conc" : A_Conc, "Normalized aFRET" : norm_aFRET, 
+                "Normalized dFRET" : norm_dFRET, 
+                "Normalized aFRET mean" : norm_aFRET_self,
+                "Normalized dFRET mean" : norm_dFRET_self,
                 }
     
-    return FRET_val
+    return FRET_val, cFRET
     
 
 
@@ -1040,8 +1049,7 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
         data = plot.getResultsTable()
         headings = data.getHeadings()
         datadict = {}
-        for heading in headings:
-            
+        for heading in headings:         
             index = data.getColumnIndex(heading)
             if "Y" in heading:
                 column = { "Cell "+str(cell_num).zfill(2) : [round(float(i), 4) for i in data.getColumn(index)] }
@@ -1049,13 +1057,24 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
                 column = {"X" : [round(float(i), 4) for i in data.getColumn(index)] }
             cell_num += 1
             datadict.update(column)
-        for key, value in datadict.iteritems():
-            testfile.write("\n" + key + "\n" + "\t".join([str(round(x, 4)) for x in value]))
-            
+
+        sorted_data = []
+        for row in zip(*([key] + value for key, value in sorted(datadict.items()))):
+            sorted_data.append(row)
+
+        testfile.write("\t\t".join(s_data[0]))
+
+        # Prints output in columns, copy paste directly to sigma/prisma/excel etc.
+        for cell in range (1, len(sorted_data), 1):
+            testfile.write("\n")
+            for times in range(len(sorted_data[cell])):
+                testfile.write(str(sorted_data[cell][times]) + "\t\t")  
+
+        # Dumps sorted data to JSON format, for use in eg. matplotlib.
         with open(os.path.join(dirs["Tables"], value_type + ".json"), "w") as outfile:
             datadict["Stim"] = Stim_List
             json.dump(datadict, outfile, sort_keys=True)
-
+        
         testfile.close()
 
 
