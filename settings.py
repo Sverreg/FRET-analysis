@@ -18,12 +18,22 @@ def settings():
     gd.addNumericField("Feature Descriptor Size: ", 12, 0, 7, "")
     gd.addNumericField("Initial Sigma: ", 1.2, 2, 7, "")  
     gd.addNumericField("Max Epsilon: ", 15, 0, 7, "")
-    gd.addCheckbox("  Use Shrinkage Constraint", False)
+    gd.addNumericField("Min Inlier Ratio: ", 0.05, 3, 7, "")
+    gd.addCheckbox("Use Shrinkage Constraint", False) 
+    gd.addChoice("Feature extraction model",
+                ["Translation", "Rigid", "Similarity", "Affine"], "Rigid"
+                )
+    gd.addChoice("Registration model",
+                ["Translation", "Rigid", "Similarity", "Affine",
+                "Elastic", "Least Squares"], "Affine"
+                )
     
     # Background removal parameters dialog.
     gd.addPanel(Panel())
     gd.addMessage("BACKGROUND REMOVAL")
-    gd.addChoice("Subtraction method:", ["Rolling Ball", "Manual selection"], "Rolling Ball")
+    gd.addChoice("Subtraction method:",
+                ["Rolling Ball", "Manual selection"], "Rolling Ball"
+                 )
     gd.addNumericField("Rolling ball size: ", 50, 0, 7, "")
     gd.addCheckbox("  Create Background", False)
     gd.addCheckbox("  Light Background", False)
@@ -54,12 +64,16 @@ def settings():
     if gd.wasCanceled() is True:
         sys.exit("Settings was cancelled, try again")
 
+    # Paramaters dictionary.
     parameters = {"Steps" : gd.getNextNumber(), 
                  "Max_oct" : gd.getNextNumber(),
                  "FD_size" : gd.getNextNumber(),
                  "Sigma" : gd.getNextNumber(),
                  "Max_eps" : gd.getNextNumber(),
+                 "Min_inlier" : gd.getNextNumber(),
                  "Shrinkage" : gd.getNextBoolean(),
+                 "Feat_model" : gd.getNextChoiceIndex(),
+                 "Reg_model" : gd.getNextChoiceIndex(),
                  "b_sub" : gd.getNextChoiceIndex(),
                  "ballsize" : gd.getNextNumber(),
                  "Create_b" : gd.getNextBoolean(),
@@ -98,7 +112,7 @@ def config_read():
 
     # Launch parser, set path to cfg file.
     config = ConfigParser.RawConfigParser()
-    con_path = os.path.join(str(Root), "examle.cfg")
+    con_path = os.path.join(str(Root), "example.cfg")
 
     # Read config if .cfg exists.
     if os.path.exists(con_path):        
@@ -106,7 +120,7 @@ def config_read():
 
         # Read cfg section, return False if section ein't reel
         try:
-            p_list = config.items("Parameers")
+            p_list = config.items("Parameters")
         except ConfigParser.NoSectionError:       
             print ("NoSectionError: "
                    "Section 'Parameters' not found, please "
@@ -127,11 +141,13 @@ def config_read():
         raise IOError("ERROR: Config file not found, check " + str(con_path) + " "
                       "or select Advanced Settings to generate a new config file "
                       )
+    
     return parameters
 
 settings()
 
-#config_read()
+parameters = config_read()
 
+print parameters
 
 

@@ -2,12 +2,15 @@
 # @File(label="Select a file") Experiment
 # @File(label="Select Root directory", style="directory") Root
 # @File(label="Select Image Classifier") classifier
-# @Integer(label="Control series: ", description="The number of baseline measurements", value=3) Control_num
+# @Integer(label="Control series:", description="The number of baseline measurements", value=3) Control_num
+# @Integer(label="Stimulation number:", description="The number of stimulation protocols applied", value=1) Stim_num
 # @Boolean(label="Advanced settings", description="Set processing parameters", value=False) Adv_set
 
 from math import *
 import os
+import sys
 import collections
+import ConfigParser
 from ij.gui import *
 from ij.plugin import *
 from ij.io import DirectoryChooser
@@ -59,9 +62,13 @@ def FRET_analyser():
     # Analysis timer, start.
     startTime = datetime.now()
 
-    # Parameter method.
-    if Adv_set is True:
-        settings()
+    # If advanced settings is checked, 
+    # gets parameters from user and writes to config,
+    # else; gets parameters from config file (. 
+    if Adv_set == True:
+        parameters = settings()
+    else: 
+        parameters = config_read()
     
     # Metadata parser    
     channels, timepoints, timelist, timelist_unsorted, LP, org_size = meta_parser()
@@ -82,7 +89,7 @@ def FRET_analyser():
     Backgroundremoval(dirs)
     
     # Composite image aligner.
-    Composite_Aligner(channels, dirs)
+    Composite_Aligner(channels, dirs, parameters)
             
     # Raw image transformer (registration).
     Transformer(channels, dirs)
@@ -97,7 +104,7 @@ def FRET_analyser():
     # calls for plots, gifs and ratiometric image generation.
     if channels == 3:
         # Measurements and calculations.
-        raw_data = Measurements(channels, timelist, dirs)   
+        raw_data = Measurements(channels, timelist, dirs, parameters)   
         FRET_val, cFRET = three_cube(raw_data, LP)
 
         # Tabulator.
@@ -105,8 +112,9 @@ def FRET_analyser():
         table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
 
         [[results_table.append([a, b, c, d, e, f])for a, b, c, d, e, f in zip(s1,s2,s3,s4,s5,s6)]
-        for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], cFRET, FRET_val["dFRET"], 
-                                     FRET_val["aFRET"], raw_data["Slices"], raw_data["Time"])]
+                               for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], cFRET, FRET_val["dFRET"], 
+                                   FRET_val["aFRET"], raw_data["Slices"], raw_data["Time"])
+                                ]
                                                         
         table.write("\t\t\t".join(map(str,["Raw", "cFRET", "dFRET", "aFRET", "Slice", "Time "])))
         table.write(("_")*128)
@@ -116,57 +124,59 @@ def FRET_analyser():
             table.write("\t\t\t".join(map(str,results_table[line])))
 
         table.close()
+
+        # Plot FRET values from dict.
         for FRET_value_ID, FRET_value in FRET_val.iteritems():
             plots(FRET_value, timelist, raw_data["Cell_num"],
-                  FRET_value_ID, Stim_List, dirs)
+                  FRET_value_ID, Stim_List, dirs, parameters
+                  )
     
         
-        # Plots ahoy.
-        max_Y, min_Y = plots(FRET_val["Raw"], timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs)
-        """
-        plots(FRET_val["dFRET"], timelist, raw_data["Cell_num"], "dFRET", Stim_List, dirs)
-        plots(FRET_val["aFRET"], timelist, raw_data["Cell_num"], "aFRET", Stim_List, dirs)
-        plots(FRET_val["dtoa"], timelist, raw_data["Cell_num"], "Donor to Acceptor ratio", Stim_List, dirs)
-        plots(FRET_val["norm_aFRET"], timelist, raw_data["Cell_num"], "Normalized aFRET", Stim_List, dirs)
-        plots(FRET_val["norm_dFRET"], timelist, raw_data["Cell_num"], "Normalized dFRET", Stim_List, dirs)
+        # This plot-call returns scale.
+        max_Y, min_Y = plots(FRET_val["Raw"], timelist, raw_data["Cell_num"],
+                             "Raw", Stim_List, dirs, parameters)
 
-        #plots(norm_raw, timelist, Cell_number, Title, "Normalized raw", Stim_List)
-        plots(norm_aFRET_self, timelist, raw_data["Cell_num"], "Mean norm aFRET self", Stim_List, dirs)
-        plots(norm_dFRET_self, timelist, raw_data["Cell_num"], "Mean norm dFRET self", Stim_List, dirs)
-        """
         # Corrects donor concentration, plots concentrations.
-        IDD_list = [ [ IDD + CFRET for (IDD, CFRET) in zip(x, y) ] 
-                   for (x, y) in zip(raw_data["IDD"], cFRET) ]
+        IDD_list = [[IDD + CFRET for (IDD, CFRET) in zip(x, y)] 
+                   for (x, y) in zip(raw_data["IDD"], cFRET)]
 
-        plots(IDD_list, timelist, raw_data["Cell_num"], "Donor concentration", Stim_List, dirs)
-        #plots(A_Conc, timelist, raw_data["Cell_num"], "Acceptor concentration", Stim_List, dirs)
-
-
+        plots(IDD_list, timelist, raw_data["Cell_num"],
+              "Donor concentration", Stim_List, dirs, parameters
+              )
+        plots(raw_data["A_Conc"], timelist, raw_data["Cell_num"],
+              "Acceptor concentration", Stim_List, dirs, parameters
+              )
 
     # Ratiometric/2-channel mode. Same as for 3ch with less calculations.
     elif channels == 2:
-        raw_data = Measurements(channels, timelist, dirs)
-        Raw_ratio, Sergei_ratio, norm_raw, norm_Sergei= Ratiometric(raw_data)
+        raw_data = Measurements(channels, timelist, dirs, parameters)
+        FRET_val = Ratiometric(raw_data)
 
         
-        results_table = []
-        table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
+        #results_table = []
+        #table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
 
-        [[results_table.append([a, b, c, d])for a, b, c, d in zip(s1,s2,s3,s4)]
-        for s1,s2,s3,s4 in zip(Raw_ratio, Sergei_ratio, raw_data["Slices"], raw_data["Time"])]
+        #[[results_table.append([a, b, c, d])for a, b, c, d in zip(s1,s2,s3,s4)]
+        #for s1,s2,s3,s4 in zip(FRET_val["Raw_ratio"], Sergei_ratio, raw_data["Slices"], raw_data["Time"])]
 
-        table.write("\t\t".join(map(str,["Raw", "Sergei", "Slice", "Time"])))
-        for line in range (len(results_table)):
-            table.write("\n")
-            table.write("\t\t".join(map(str,results_table[line])))
+        #table.write("\t\t".join(map(str,["Raw", "Sergei", "Slice", "Time"])))
+        #for line in range (len(results_table)):
+        #    table.write("\n")
+        #    table.write("\t\t".join(map(str,results_table[line])))
 
-        table.close()
-
-        plots(Raw_ratio, timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs)
-        plots(Sergei_ratio, timelist, raw_data["Cell_num"], "Sergei", Stim_List, dirs)
-        plots(norm_Sergei, timelist, raw_data["Cell_num"], "Normalized Sergei", Stim_List, dirs)
-        plots(norm_raw, timelist, raw_data["Cell_num"], "Normalized Raw", Stim_List, dirs)
-
+        #table.close()
+        
+        for FRET_value_ID, FRET_value in FRET_val.iteritems():
+            plots(FRET_value, timelist, raw_data["Cell_num"],
+                  FRET_value_ID, Stim_List, dirs, parameters
+                  )
+        """
+        plots(Raw_ratio, timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs, parameters)
+        plots(Sergei_ratio, timelist, raw_data["Cell_num"], "Sergei", Stim_List, dirs, parameters)
+        plots(norm_Sergei, timelist, raw_data["Cell_num"], "Normalized Sergei", Stim_List, dirs, parameters)
+        plots(norm_raw, timelist, raw_data["Cell_num"], "Normalized Raw", Stim_List, dirs, parameters)
+        """
+    
     # Scale, ROI color coded overlay and gif animation.
     Overlayer(org_size, dirs)
 
@@ -176,7 +186,145 @@ def FRET_analyser():
     # Done, prints/logs time used.
     print ("Finished analysis in: "+str(datetime.now()-startTime))
     IJ.log("Finished analysis in: "+str(datetime.now()-startTime))
-   	
+
+def settings():
+    """ Settings """
+
+    # Registration parameters dialog.
+    gd = GenericDialog("Advanced Settings")
+    gd.addMessage("REGISTRATION PARAMETERS") 
+    gd.addNumericField("Steps per scale octave: ", 8, 0, 7, "")
+    gd.addNumericField("Max Octave Size: ", 1024, 0, 7, "")
+    gd.addNumericField("Feature Descriptor Size: ", 12, 0, 7, "")
+    gd.addNumericField("Initial Sigma: ", 1.2, 2, 7, "")  
+    gd.addNumericField("Max Epsilon: ", 15, 0, 7, "")
+    gd.addNumericField("Min Inlier Ratio: ", 0.05, 3, 7, "")
+    gd.addCheckbox("Use Shrinkage Constraint", False) 
+    gd.addChoice("Feature extraction model",
+                ["Translation", "Rigid", "Similarity", "Affine"], "Rigid"
+                 )
+    gd.addChoice("Registration model",
+                ["Translation", "Rigid", "Similarity", "Affine",
+                "Elastic", "Least Squares"], "Affine"
+                 )
+    
+    # Background removal parameters dialog.
+    gd.addPanel(Panel())
+    gd.addMessage("BACKGROUND REMOVAL") 
+    gd.addChoice("Subtraction method:", 
+                ["Rolling Ball", "Manual selection"], "Rolling Ball"
+                 )          
+    gd.addNumericField("Rolling ball size: ", 50, 0, 7, "")
+    gd.addCheckbox("  Create Background", False)
+    gd.addCheckbox("  Light Background", False)
+    gd.addCheckbox("  Use Parabaloid", False)
+    gd.addCheckbox("  Do Pre-smoothing", False)
+    gd.addCheckbox("  Correct Corners", False)
+
+    # Measumrent parameters dialog.
+    gd.addPanel(Panel())
+    gd.addMessage("MEASUREMENT PARAMETERS")
+    gd.addNumericField("Max Cell Area", 2200, 0, 7, "px")
+    gd.addNumericField("Min Cell Area", 200, 0, 7, "px")
+
+    # Plot parameters dialog.
+    gd.addPanel(Panel())
+    gd.addMessage("PLOT PARAMETERS")
+    gd.addNumericField("Max y, d and aFRET", 0.65, 2, 7, "")
+    gd.addNumericField("Min y, d and aFRET", 0, 2, 7, "")
+    gd.addNumericField("Max y, norm. d and aFRET", 1.65, 2, 7, "")
+    gd.addNumericField("Min y, norm. d and aFRET", 0.5, 2, 7, "")
+    
+    # Set location of dialog on screen.
+    #gd.setLocation(0,1000)
+    
+    gd.showDialog()
+    
+    # Checks if cancel was pressed, kills script.
+    if gd.wasCanceled() is True:
+        sys.exit("Cancel was pressed, script terminated.")
+
+    # Parameters dictionary.
+    parameters = {"Steps" : gd.getNextNumber(), 
+                 "Max_oct" : gd.getNextNumber(),
+                 "FD_size" : gd.getNextNumber(),
+                 "Sigma" : gd.getNextNumber(),
+                 "Max_eps" : gd.getNextNumber(),
+                 "Min_inlier" : gd.getNextNumber(),
+                 "Shrinkage" : gd.getNextBoolean(),
+                 "Feat_model" : gd.getNextChoiceIndex(),
+                 "Reg_model" : gd.getNextChoiceIndex(),
+                 "b_sub" : gd.getNextChoiceIndex(),
+                 "ballsize" : gd.getNextNumber(),
+                 "Create_b" : gd.getNextBoolean(),
+                 "Light_b" : gd.getNextBoolean(),
+                 "Parab" : gd.getNextBoolean(),
+                 "smooth" : gd.getNextBoolean(),
+                 "Corners" : gd.getNextBoolean(),
+                 "Cell_max" : gd.getNextNumber(),
+                 "Cell_min" : gd.getNextNumber(),
+                 "p_max" : gd.getNextNumber(),
+                 "p_min" : gd.getNextNumber(),
+                 "p_max_n" : gd.getNextNumber(),
+                 "p_min_n" : gd.getNextNumber()
+                 }
+
+    parameters = config_write(parameters)   
+
+    return parameters
+
+def config_write(parameters):
+    
+    config = ConfigParser.RawConfigParser()
+    config.add_section("Parameters")
+
+    
+    for key, value in parameters.iteritems():
+        config.set("Parameters", str(key), str(value))
+
+    with open(os.path.join(str(Root), "FRET_params.cfg"), "wb") as configfile:
+        config.write(configfile)
+
+    return parameters
+
+
+def config_read():
+    """ Config file reader, returns parameters from config file. """
+
+    # Launch parser, set path to cfg file.
+    config = ConfigParser.RawConfigParser()
+    con_path = os.path.join(str(Root), "FRET_params.cfg")
+
+    # Read config if .cfg exists.
+    if os.path.exists(con_path):        
+        config.read(con_path)
+
+        # Read cfg section, return False if section ein't reel
+        try:
+            p_list = config.items("Parameters")
+        except ConfigParser.NoSectionError:       
+            print ("NoSectionError: "
+                   "Section 'Parameters' not found, please "
+                   "check (" + str(con_path) + ") for the "
+                   "correct section name, or change the "
+                   "section name in config_read()"
+                   )
+            raise
+
+        # Build dict. of parameters.
+        parameters = {}
+        for key, value in p_list:
+            parameters[key] = value
+
+    else:
+        print ("ERROR: Config file not found, check " + str(con_path) + " "
+               "or select Advanced Settings to generate a new config file "
+               )
+        raise IOError("ERROR: Config file not found, check " + str(con_path) + " "
+                      "or select Advanced Settings to generate a new config file "
+                      )
+    
+    return parameters
 
 def meta_parser():
     """ Iterates through .lif XML/OME metadata, returns selected values eg. timepoints, channels, series count, laser power.. """
@@ -341,90 +489,90 @@ def imageprojector(channels, timelist_unsorted, dirs):
 		
 		except IOException:
 			print "Directory does not exist"
-			return
+			raise
 
 	IJ.log("Images projected and saved to disk")
 
 	
-def Composite_Aligner(channels, dirs):
-	""" Aligns composite images, saves to directory. """
+def Composite_Aligner(channels, dirs, parameters):
+    """ Aligns composite images, saves to directory. """
 		
-	# Reference image name (must be within source directory)	
-	reference_name = "Timepoint000.tif"
+    # Reference image name (must be within source directory)	
+    reference_name = "Timepoint000.tif"
 		
-	# Shrinkage option (False = 0)
-	use_shrinking_constraint = 0
-		 
-	p = Register_Virtual_Stack_MT.Param()
-		
-	# SIFT parameters:
-	p.sift.maxOctaveSize = 1024
-	p.sift.fdSize = 12
-	p.sift.initialSigma = 1.2
-	p.maxEpsilon = 15
-	
-	p.sift.steps = 8
-	
-	# The 2ch images have a ton of features,
-    # sift feature detection sensitivity is 
-    # accordingly reduced.
-	if channels == 2:
-		p.sift.steps = 8
-	
-	# 1 = RIGID, 3 = AFFINE
-	p.featuresModelIndex = 1
-	p.registrationModelIndex = 3
-	
-	# The "inlier ratio":
-	p.minInlierRatio = 0.05
-	
-	# Opens a dialog to set transformation options, comment out to run in default mode
-	#IJ.beep()
-	#p.showDialog()	
+    # Shrinkage option (False = 0)
+    use_shrinking_constraint = int(parameters["Shrinkage"])
 
-	# Executes alignment.
-	print ("Aligning...")
+    # Parameters method, RVSS
+    p = Register_Virtual_Stack_MT.Param()
+		
+    # SIFT parameters:
+    p.sift.maxOctaveSize = int(parameters["Max_oct"])
+    p.sift.fdSize = int(parameters["FD_size"])
+    p.sift.initialSigma = float(parameters["Sigma"])
+    p.maxEpsilon = float(parameters["Max_eps"])
+    p.sift.steps = int(parameters["Steps"])
+    p.minInlierRatio = float(parameters["Min_inlier"])
 	
-	reference_name = "Timepoint000.tif"
-	Register_Virtual_Stack_MT.exec(dirs["Composites"] + os.sep, 
+    # 1 = RIGID, 3 = AFFINE
+    p.featuresModelIndex = int(parameters["Feat_model"])
+    p.registrationModelIndex = int(parameters["Reg_model"])
+	
+    # Opens a dialog to set transformation options, comment out to run in default mode
+    #IJ.beep()
+    #p.showDialog()	
+
+    # Executes alignment.
+    print ("Registering stack...")
+	
+    reference_name = "Timepoint000.tif"
+    Register_Virtual_Stack_MT.exec(dirs["Composites"] + os.sep, 
 	                               dirs["Composites_Aligned"] + os.sep,
 	                               dirs["Transformations"] + os.sep,
 	                               reference_name, p, use_shrinking_constraint)
-	
-	# Close alignment window.
-	imp = WindowManager.getCurrentImage()
-  	imp.close()
+
+    print ("Registration completed.")
+    # Close alignment window.
+    imp = WindowManager.getCurrentImage()
+    imp.close()
 
 def Transformer(channels, dirs):
-	""" Applies transformation matrices from Composite_Aligner to all raw, 32-bit projections. """
+    """ Applies transformation matrices from Composite_Aligner to all raw, 32-bit projections. """
 
-	# Executes transformations for each channel.
-	t = register_virtual_stack.Transform_Virtual_Stack_MT
-	
-	t.exec(dirs["Projections_C0"] + os.sep,
+    # Executes transformations for each channel.
+    t = register_virtual_stack.Transform_Virtual_Stack_MT
+
+    print "Transforming channel 0..."
+    t.exec(dirs["Projections_C0"] + os.sep,
 	       dirs["Aligned_All"] + os.sep,
 	       dirs["Transformations"] + os.sep,
 	       True)
-           
-	imp = WindowManager.getCurrentImage()
-  	imp.close()
-  	
-	t.exec(dirs["Projections_C1"] + os.sep,
+
+    print "Channel 0 transformed."
+    imp = WindowManager.getCurrentImage()
+    imp.close()
+
+    print "Transforming channel 1..."
+    t.exec(dirs["Projections_C1"] + os.sep,
 	       dirs["Aligned_All"] + os.sep, 
 	       dirs["Transformations"] + os.sep, 
 	       True)
-           
-	imp = WindowManager.getCurrentImage()
-  	imp.close()
-  	
-  	if channels == 3:
-		t.exec(dirs["Projections_C2"] + os.sep,
+
+    print "Channel 1 transformed."
+    imp = WindowManager.getCurrentImage()
+    imp.close()
+
+
+    if channels == 3:
+        print "Transforming channel 2..."
+        t.exec(dirs["Projections_C2"] + os.sep,
 		       dirs["Aligned_All"] + os.sep,
 		       dirs["Transformations"] + os.sep, 
 		       True)
-               
-		imp = WindowManager.getCurrentImage()
-  		imp.close()
+
+        print "Channel 2 transformed."
+        imp = WindowManager.getCurrentImage()
+        imp.close()
 
 	
 def Weka_Segm(dirs):
@@ -470,7 +618,7 @@ def Weka_Segm(dirs):
 	rm.runCommand("Split")
 
 
-def Measurements(channels, timelist, dirs):
+def Measurements(channels, timelist, dirs, parameters):
 	""" Takes measurements of weka selected ROIs in a generated aligned image stack. """
 	
    	# Set desired measurements. 
@@ -491,10 +639,10 @@ def Measurements(channels, timelist, dirs):
 	for roi in reversed(range(total_rois)):
 		rm.select(roi)
 		size = imp.getStatistics().area		
-		if size < 200:
+		if size < int(parameters["Cell_min"]):
 			rm.select(roi)
 			rm.runCommand('Delete')
-		elif size > 2000:
+		elif size > int(parameters["Cell_max"]):
 			rm.select(roi)
 			rm.runCommand('Delete')
 		else:
@@ -506,12 +654,12 @@ def Measurements(channels, timelist, dirs):
 	# Measure each ROI for each channel.
 	imp = WindowManager.getCurrentImage()
 	rm.runCommand("Select All")	
-	rm.runCommand("multi-measure measure_all")		
+	rm.runCommand("multi-measure measure_all One row per slice")		
 	
 	# Close.
 	imp = WindowManager.getCurrentImage()
 	imp.close()
-    # yada
+
 	# Get measurement results.
 	rt = ResultsTable.getResultsTable()
 	Area = rt.getColumn(0)
@@ -521,7 +669,7 @@ def Measurements(channels, timelist, dirs):
 	# Removes (and counts) artefact ROIs (redundant)
 	# Area indices without outliers
 	Area_indices = [index for (index, value) in enumerate(Area, start=0)
-	                if value > 200 and value < 2000]
+	                if value > 0 and value < 9999999]
 	
 	# Mean without outliers from area (redundant)
 	Filtered_mean = [Mean[index] for index in Area_indices]
@@ -711,8 +859,12 @@ def Ratiometric(raw_data):
     Sergei_ratio = [ [round(float(i), 3) for i in nested] for nested in Sergei_ratio ]
     norm_raw = [round(float(i), 5) for i in norm_raw]
     norm_Sergei = [round(float(i), 5) for i in norm_Sergei]
-        
-    return Raw_ratio, Sergei_ratio, norm_raw, norm_Sergei
+
+    FRET_val = {"Raw" : Raw_ratio, "Sergei" : Sergei_ratio,
+                "Normalized raw" : norm_raw, "Normalized sergei" : norm_Sergei
+                }
+    
+    return FRET_val
 
 
 		
@@ -877,22 +1029,10 @@ def user_input():
 	User_Input_List = []
 	Stim_List = []
 	
-	# Takes title, description and number of stims from user.
-	gd = GenericDialog("Experiment Parameters:")
-	gd.addStringField("Experiment Description:", "")
-  	gd.addNumericField("Number of stimulation points:", 1, 1)
-
-  	# Gets values from dialogs.
-  	gd.showDialog()
-  	Description = gd.getNextString()
-  	Nr_Stim = int(gd.getNextNumber())
-
-	User_Input_List.append([Title, Description, Nr_Stim])
-
 	# Creates dialog boxes proportionally to number of stimulations, type and duration. 
-  	if Nr_Stim >= 1:
+  	if Stim_num >= 1:
   		gd = GenericDialog("Stimulation applications")
-  		for stim in range(0, Nr_Stim, 1):
+  		for stim in range(0, Stim_num, 1):
   			gd.addStringField("Stimulation type "+str(stim+1)+":", "cLTP")
   			gd.addNumericField("Stimulation start:", stim*2, 2)
   			gd.addNumericField("Stimulation end:", (stim+1)*2, 2)
@@ -900,7 +1040,7 @@ def user_input():
   		gd.showDialog()
 
   	# Lists the different stimulations.
-	for stim in range(0, Nr_Stim, 1):
+	for stim in range(0, Stim_num, 1):
 		Type_Stim = gd.getNextString()
   		Start_Stim = gd.getNextNumber()
   		End_Stim = gd.getNextNumber()
@@ -910,7 +1050,7 @@ def user_input():
 	
 	# Creates a dictionary of all user inputs.
 	User_Input_Dict = {'Parameters': User_Input_List[0]}
-	for stim in range(1, Nr_Stim+1, 1):
+	for stim in range(1, Stim_num, 1):
 		User_Input_Dict['Stimulation '+str(stim)] = User_Input_List[stim]
 
 	# Dumps dict to JSON.	
@@ -918,7 +1058,7 @@ def user_input():
 	return User_Input_Dict, User_Input_Dict_JSON, Stim_List
 
 
-def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
+def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters):
     """ Plots all calculated values, saves plots to generated directory, returns plot scale. """
 
     Mean_plot = 0
@@ -983,14 +1123,14 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
 
     # Scaling of normalized plots..
     if "Normalized" in value_type:
-        max_Y, min_Y = 1.75, 0.4
+        min_Y, max_Y = float(parameters["p_min_n"]), float(parameters["p_max_n"])
 
     if value_type == "dFRET":
-        max_Y = 0.65
-        min_y = 0.0
+        max_Y = float(parameters["p_max"])
+        min_y = float(parameters["p_min"])
     elif value_type =="aFRET":
-        max_Y = 0.65
-        min_Y = 0.0
+        max_Y = float(parameters["p_max"])
+        min_y = float(parameters["p_min"])
 
     # Call plot, set scale.
     plot = Plot(Title, "Time (minutes)", value_type)
@@ -1062,7 +1202,7 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs):
         for row in zip(*([key] + value for key, value in sorted(datadict.items()))):
             sorted_data.append(row)
 
-        testfile.write("\t\t".join(s_data[0]))
+        testfile.write("\t\t".join(sorted_data[0]))
 
         # Prints output in columns, copy paste directly to sigma/prisma/excel etc.
         for cell in range (1, len(sorted_data), 1):
