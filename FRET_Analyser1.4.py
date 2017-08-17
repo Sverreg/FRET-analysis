@@ -6,55 +6,56 @@
 # @Integer(label="Stimulation number:", description="The number of stimulation protocols applied", value=1) Stim_num
 # @Boolean(label="Advanced settings", description="Set processing parameters", value=False) Adv_set
 
-from math import *
 import os
 import sys
 import collections
 import ConfigParser
-from ij.gui import *
-from ij.plugin import *
-from ij.io import DirectoryChooser
+import ast
+import time
+from datetime import datetime
+
+import itertools
+from itertools import repeat, chain
+import json
 from jarray import array
+
 from ij import IJ, WindowManager, ImagePlus
-from ij.process import ImageConverter
-from ij.process import ImageProcessor
 from ij.gui import GenericDialog
+from ij.gui import Roi
+from ij.gui import Plot
+from ij.gui import WaitForUserDialog
+from ij.measure import ResultsTable
 from ij.plugin import ZProjector
 from ij.plugin import CompositeConverter
-from loci.plugins import BF
-from loci.formats import ImageReader
-from loci.formats import MetadataTools
-from ome.units import UNITS
-from loci.common import Region
-from loci.plugins.in import ImporterOptions
-from trainableSegmentation import WekaSegmentation
-from fiji.threshold import Auto_Threshold
+from ij.plugin import ImageCalculator
+from ij.plugin import Duplicator
 from ij.plugin.filter import ThresholdToSelection
 from ij.plugin.filter import EDM
 from ij.plugin.filter import Binary
 from ij.plugin.filter import Analyzer
 from ij.plugin.filter import BackgroundSubtracter
-from ij.plugin.filter import *
-import Watershed_Irregular_Features
 from ij.plugin.frame import RoiManager
-from ij.gui import Roi
+from ij.process import ImageConverter
+from ij.process import ImageProcessor
+from loci.formats import ImageReader
+from loci.formats import MetadataTools
+from loci.plugins import BF
+from loci.plugins.in import ImporterOptions
+from loci.common import Region
+from fiji.threshold import Auto_Threshold
+
 from register_virtual_stack import Register_Virtual_Stack_MT
-from ij.measure import ResultsTable
-import itertools
-from itertools import repeat, chain
 import register_virtual_stack.Transform_Virtual_Stack_MT
-import json
-from datetime import datetime
-from ij.gui import Plot
-from ij.gui import WaitForUserDialog
+from trainableSegmentation import WekaSegmentation
+import Watershed_Irregular_Features
+
+from ome.units import UNITS
 from java.awt import Color
 from java.awt import Dimension
 from java.awt import Panel
 from java.util import Vector
 from java.awt import Font
-import time
-from ij.plugin import ImageCalculator
-from ij.plugin import Duplicator
+
 
 def FRET_analyser():
     """ Master method and tabulator. """
@@ -86,7 +87,7 @@ def FRET_analyser():
     Compositor(timepoints, channels, dirs)
 
     # Background subtracter.
-    Backgroundremoval(dirs)
+    Backgroundremoval(dirs, parameters)
     
     # Composite image aligner.
     Composite_Aligner(channels, dirs, parameters)
@@ -150,7 +151,7 @@ def FRET_analyser():
     # Ratiometric/2-channel mode. Same as for 3ch with less calculations.
     elif channels == 2:
         raw_data = Measurements(channels, timelist, dirs, parameters)
-        FRET_val = Ratiometric(raw_data)
+        FRET_val = Ratiometric(raw_data, parameters)
 
         
         #results_table = []
@@ -190,50 +191,74 @@ def FRET_analyser():
 def settings():
     """ Settings """
 
+    # Calls potential config file to set defaults
+    # for settings dialog. Sets all defaults to 0
+    # if no config file exists.
+    con_path = os.path.join(str(Root), "FRET_params.cfg")
+    if os.path.exists(con_path):
+        dflt = config_read()
+        print type(dflt.get("b_sub", "Rolling ball"))
+        print (dflt.get("b_sub", "Rolling ball"))
+        print type(int(dflt.get("b_sub", "Rolling ball")))
+        print (dflt.get("b_sub", "Rolling ball"))
+    else:
+        dflt = {}
+
+    feat_model_strings = ["Translation", "Rigid", 
+                          "Similarity", "Affine
+                          ]
+    reg_model_strings = ["Translation", "Rigid",
+                         "Similarity", "Affine",
+                         "Elastic", "Least Squares"
+                         ]
+    b_sub_strings = ["Rolling Ball", "Manual Selection"]
+                         
     # Registration parameters dialog.
     gd = GenericDialog("Advanced Settings")
     gd.addMessage("REGISTRATION PARAMETERS") 
-    gd.addNumericField("Steps per scale octave: ", 8, 0, 7, "")
-    gd.addNumericField("Max Octave Size: ", 1024, 0, 7, "")
-    gd.addNumericField("Feature Descriptor Size: ", 12, 0, 7, "")
-    gd.addNumericField("Initial Sigma: ", 1.2, 2, 7, "")  
-    gd.addNumericField("Max Epsilon: ", 15, 0, 7, "")
-    gd.addNumericField("Min Inlier Ratio: ", 0.05, 3, 7, "")
-    gd.addCheckbox("Use Shrinkage Constraint", False) 
-    gd.addChoice("Feature extraction model",
-                ["Translation", "Rigid", "Similarity", "Affine"], "Rigid"
+    gd.addNumericField("Steps per scale octave: ", float(dflt.get("steps", 6)), 0, 7, "")
+    gd.addNumericField("Max Octave Size: ", float(dflt.get("max_oct", 1024)), 0, 7, "")
+    gd.addNumericField("Feature Descriptor Size: ", float(dflt.get("fd_size", 12)), 1, 7, "")
+    gd.addNumericField("Initial Sigma: ", float(dflt.get("sigma", 1.2)), 2, 7, "")  
+    gd.addNumericField("Max Epsilon: ", float(dflt.get("max_eps", 15)), 1, 7, "")
+    gd.addNumericField("Min Inlier Ratio: ", float(dflt.get("min_inlier", 0.05)), 3, 7, "")
+    gd.addCheckbox("Use Shrinkage Constraint", ast.literal_eval(dflt.get("shrinkage", "False")))
+    gd.addChoice("Feature extraction model", feat_model_strings,
+                 feat_model_strings[int(dflt.get("feat_model", 1))]
                  )
-    gd.addChoice("Registration model",
-                ["Translation", "Rigid", "Similarity", "Affine",
-                "Elastic", "Least Squares"], "Affine"
+    gd.addChoice("Registration model", reg_model_strings,
+                 reg_model_strings[int(dflt.get("reg_model", 1))]
                  )
     
     # Background removal parameters dialog.
     gd.addPanel(Panel())
     gd.addMessage("BACKGROUND REMOVAL") 
-    gd.addChoice("Subtraction method:", 
-                ["Rolling Ball", "Manual selection"], "Rolling Ball"
+    gd.addChoice("Subtraction method:", b_sub_strings,
+                 b_sub_strings[int(dflt.get("b_sub", 0))]
                  )          
-    gd.addNumericField("Rolling ball size: ", 50, 0, 7, "")
-    gd.addCheckbox("  Create Background", False)
-    gd.addCheckbox("  Light Background", False)
-    gd.addCheckbox("  Use Parabaloid", False)
-    gd.addCheckbox("  Do Pre-smoothing", False)
-    gd.addCheckbox("  Correct Corners", False)
+    gd.addNumericField("Rolling ball size: ", 
+                       float(dflt.get("ballsize", 50)), 1, 7, "px"
+                       )
+    gd.addCheckbox("Create Background", ast.literal_eval(dflt.get("create_b", "False")))
+    gd.addCheckbox("Light Background", ast.literal_eval(dflt.get("light_b", "False")))
+    gd.addCheckbox("Use Parabaloid", ast.literal_eval(dflt.get("parab", "False")))
+    gd.addCheckbox("Do Pre-smoothing", ast.literal_eval(dflt.get("smooth", "False")))
+    gd.addCheckbox("Correct Corners", ast.literal_eval(dflt.get("corners", "False")))
 
     # Measumrent parameters dialog.
     gd.addPanel(Panel())
     gd.addMessage("MEASUREMENT PARAMETERS")
-    gd.addNumericField("Max Cell Area", 2200, 0, 7, "px")
-    gd.addNumericField("Min Cell Area", 200, 0, 7, "px")
+    gd.addNumericField("Max Cell Area", float(dflt.get("cell_max", 2200)), 0, 7, "px")
+    gd.addNumericField("Min Cell Area", float(dflt.get("cell_min", 200)), 0, 7, "px")
+    gd.addNumericField("Ratio Subtraction", float(dflt.get("subtr_ratio", 0.31)), 3, 7, "")
 
     # Plot parameters dialog.
     gd.addPanel(Panel())
     gd.addMessage("PLOT PARAMETERS")
-    gd.addNumericField("Max y, d and aFRET", 0.65, 2, 7, "")
-    gd.addNumericField("Min y, d and aFRET", 0, 2, 7, "")
-    gd.addNumericField("Max y, norm. d and aFRET", 1.65, 2, 7, "")
-    gd.addNumericField("Min y, norm. d and aFRET", 0.5, 2, 7, "")
+    gd.addNumericField("Max y, d and aFRET", float(dflt.get("p_max", 0.65)), 2, 7, "")
+    gd.addNumericField("Min y, d and aFRET", float(dflt.get("p_min", 0.0)), 2, 7, "")
+    gd.addNumericField("Max y, norm. d and aFRET", float(dflt.get("p_max_n", 1.65)), 2, 7, "")
+    gd.addNumericField("Min y, norm. d and aFRET", float(dflt.get("p_min_n", 0.5)), 2, 7, "")
     
     # Set location of dialog on screen.
     #gd.setLocation(0,1000)
@@ -245,24 +270,25 @@ def settings():
         sys.exit("Cancel was pressed, script terminated.")
 
     # Parameters dictionary.
-    parameters = {"Steps" : gd.getNextNumber(), 
-                 "Max_oct" : gd.getNextNumber(),
-                 "FD_size" : gd.getNextNumber(),
-                 "Sigma" : gd.getNextNumber(),
-                 "Max_eps" : gd.getNextNumber(),
-                 "Min_inlier" : gd.getNextNumber(),
-                 "Shrinkage" : gd.getNextBoolean(),
-                 "Feat_model" : gd.getNextChoiceIndex(),
-                 "Reg_model" : gd.getNextChoiceIndex(),
+    parameters = {"steps" : gd.getNextNumber(), 
+                 "max_oct" : gd.getNextNumber(),
+                 "fd_size" : gd.getNextNumber(),
+                 "sigma" : gd.getNextNumber(),
+                 "max_eps" : gd.getNextNumber(),
+                 "min_inlier" : gd.getNextNumber(),
+                 "shrinkage" : gd.getNextBoolean(),
+                 "feat_model" : gd.getNextChoiceIndex(),
+                 "reg_model" : gd.getNextChoiceIndex(),
                  "b_sub" : gd.getNextChoiceIndex(),
                  "ballsize" : gd.getNextNumber(),
-                 "Create_b" : gd.getNextBoolean(),
-                 "Light_b" : gd.getNextBoolean(),
-                 "Parab" : gd.getNextBoolean(),
+                 "create_b" : gd.getNextBoolean(),
+                 "light_b" : gd.getNextBoolean(),
+                 "parab" : gd.getNextBoolean(),
                  "smooth" : gd.getNextBoolean(),
-                 "Corners" : gd.getNextBoolean(),
-                 "Cell_max" : gd.getNextNumber(),
-                 "Cell_min" : gd.getNextNumber(),
+                 "corners" : gd.getNextBoolean(),
+                 "cell_max" : gd.getNextNumber(),
+                 "cell_min" : gd.getNextNumber(),
+                 "subtr_ratio" : gd.getNextNumber(),
                  "p_max" : gd.getNextNumber(),
                  "p_min" : gd.getNextNumber(),
                  "p_max_n" : gd.getNextNumber(),
@@ -501,22 +527,22 @@ def Composite_Aligner(channels, dirs, parameters):
     reference_name = "Timepoint000.tif"
 		
     # Shrinkage option (False = 0)
-    use_shrinking_constraint = int(parameters["Shrinkage"])
+    use_shrinking_constraint = int(parameters["shrinkage"])
 
     # Parameters method, RVSS
     p = Register_Virtual_Stack_MT.Param()
 		
     # SIFT parameters:
-    p.sift.maxOctaveSize = int(parameters["Max_oct"])
-    p.sift.fdSize = int(parameters["FD_size"])
-    p.sift.initialSigma = float(parameters["Sigma"])
-    p.maxEpsilon = float(parameters["Max_eps"])
-    p.sift.steps = int(parameters["Steps"])
-    p.minInlierRatio = float(parameters["Min_inlier"])
+    p.sift.maxOctaveSize = int(parameters["max_oct"])
+    p.sift.fdSize = int(parameters["fd_size"])
+    p.sift.initialSigma = float(parameters["sigma"])
+    p.maxEpsilon = float(parameters["max_eps"])
+    p.sift.steps = int(parameters["steps"])
+    p.minInlierRatio = float(parameters["min_inlier"])
 	
     # 1 = RIGID, 3 = AFFINE
-    p.featuresModelIndex = int(parameters["Feat_model"])
-    p.registrationModelIndex = int(parameters["Reg_model"])
+    p.featuresModelIndex = int(parameters["feat_model"])
+    p.registrationModelIndex = int(parameters["reg_model"])
 	
     # Opens a dialog to set transformation options, comment out to run in default mode
     #IJ.beep()
@@ -619,101 +645,101 @@ def Weka_Segm(dirs):
 
 
 def Measurements(channels, timelist, dirs, parameters):
-	""" Takes measurements of weka selected ROIs in a generated aligned image stack. """
+    """ Takes measurements of weka selected ROIs in a generated aligned image stack. """
 	
-   	# Set desired measurements. 
-	an = Analyzer()
-	an.setMeasurements(an.AREA + an.MEAN + an.MIN_MAX + an.SLICE)
+    # Set desired measurements. 
+    an = Analyzer()
+    an.setMeasurements(an.AREA + an.MEAN + an.MIN_MAX + an.SLICE)
 
-	# Opens raw-projections as stack.
-	test = IJ.run("Image Sequence...",
+    # Opens raw-projections as stack.
+    test = IJ.run("Image Sequence...",
 	              "open=" + dirs["Aligned_All"]
 	              + " number=400 starting=1 increment=1 scale=400 file=.tif sort")
 
-	# Calls roimanager.
-	rm = RoiManager.getInstance()	
-	total_rois = rm.getCount()
+    # Calls roimanager.
+    rm = RoiManager.getInstance()	
+    total_rois = rm.getCount()
 
-	# Deletes artefact ROIs (too large or too small). 
-	imp = WindowManager.getCurrentImage()
-	for roi in reversed(range(total_rois)):
-		rm.select(roi)
-		size = imp.getStatistics().area		
-		if size < int(parameters["Cell_min"]):
-			rm.select(roi)
-			rm.runCommand('Delete')
-		elif size > int(parameters["Cell_max"]):
-			rm.select(roi)
-			rm.runCommand('Delete')
-		else:
-			rm.runCommand("Deselect")
+    # Deletes artefact ROIs (too large or too small). 
+    imp = WindowManager.getCurrentImage()
+    for roi in reversed(range(total_rois)):
+        rm.select(roi)
+        size = imp.getStatistics().area		
+        if size < int(parameters["cell_min"]):
+            rm.select(roi)
+            rm.runCommand('Delete')
+        elif size > int(parameters["cell_max"]):
+            rm.select(roi)
+            rm.runCommand('Delete')
+        else:
+            rm.runCommand("Deselect")
 
-	# Confirm that ROI selection is Ok (comment out for headless run).
-	WaitForUserDialog("ROI check", "Control ROI selection, then click OK").show() 
+    # Confirm that ROI selection is Ok (comment out for headless run).
+    WaitForUserDialog("ROI check", "Control ROI selection, then click OK").show() 
 	
-	# Measure each ROI for each channel.
-	imp = WindowManager.getCurrentImage()
-	rm.runCommand("Select All")	
-	rm.runCommand("multi-measure measure_all One row per slice")		
+    # Measure each ROI for each channel.
+    imp = WindowManager.getCurrentImage()
+    rm.runCommand("Select All")	
+    rm.runCommand("multi-measure measure_all One row per slice")		
 	
-	# Close.
-	imp = WindowManager.getCurrentImage()
-	imp.close()
+    # Close.
+    imp = WindowManager.getCurrentImage()
+    imp.close()
 
-	# Get measurement results.
-	rt = ResultsTable.getResultsTable()
-	Area = rt.getColumn(0)
-	Mean = rt.getColumn(1)
-	Slice = rt.getColumn(27)
+    # Get measurement results.
+    rt = ResultsTable.getResultsTable()
+    Area = rt.getColumn(0)
+    Mean = rt.getColumn(1)
+    Slice = rt.getColumn(27)
 	
-	# Removes (and counts) artefact ROIs (redundant)
-	# Area indices without outliers
-	Area_indices = [index for (index, value) in enumerate(Area, start=0)
+    # Removes (and counts) artefact ROIs (redundant)
+    # Area indices without outliers
+    Area_indices = [index for (index, value) in enumerate(Area, start=0)
 	                if value > 0 and value < 9999999]
 	
-	# Mean without outliers from area (redundant)
-	Filtered_mean = [Mean[index] for index in Area_indices]
-	Filtered_slice = [Slice[index] for index in Area_indices]
+    # Mean without outliers from area (redundant)
+    Filtered_mean = [Mean[index] for index in Area_indices]
+    Filtered_slice = [Slice[index] for index in Area_indices]
 
-	# Number of cell selections.
-	Cell_number = Filtered_slice.count(1.0)
-	rm = RoiManager.getInstance()
-	print "Number of selected cells: ", Cell_number
-	print "Total number of selections: ", rm.getCount()
+    # Number of cell selections.
+    Cell_number = Filtered_slice.count(1.0)
+    rm = RoiManager.getInstance()
+    print "Number of selected cells: ", Cell_number
+    print "Total number of selections: ", rm.getCount()
 
-	Cells = [ Filtered_mean [x : x + Cell_number]
+    Cells = [ Filtered_mean [x : x + Cell_number]
 	          for x in xrange (0, len(Filtered_mean), Cell_number) ]
               	
-	Cells_indices = [ index for (index, value) in enumerate(Cells) ]
+    Cells_indices = [ index for (index, value) in enumerate(Cells) ]
 	
-	time = [ x for item in timelist for x in repeat(item, Cell_number) ]
-	time = [ time [x : x + Cell_number] for x in xrange (0, len(time), Cell_number) ]
+    time = [ x for item in timelist for x in repeat(item, Cell_number) ]
+    time = [ time [x : x + Cell_number] for x in xrange (0, len(time), Cell_number) ]
 	
-	Slices = [ Filtered_slice [x : x + Cell_number]
+    Slices = [ Filtered_slice [x : x + Cell_number]
 	           for x in xrange (0, len(Filtered_slice), Cell_number) ]
 	
-	# Lists IDD, IDA + IAA if 3ch.
-	if channels == 3:
-		IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
-		IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]	
-		IAA_list = [ Cells [index] for index in Cells_indices [2::int(channels)] ]
-		
-		raw_data = {"IDD" : IDD_list, "IDA" : IDA_list, "IAA" : IAA_list,
-				  	"Cell_num" : Cell_number, "Slices" : Slices,
-				    "Time" : time
-				    }
+    # Lists IDD, IDA + IAA if 3ch.
+    if channels == 3:
+        IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
+        IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]    
+        IAA_list = [ Cells [index] for index in Cells_indices [2::int(channels)] ]
+        
+        raw_data = {"IDD" : IDD_list, "IDA" : IDA_list, "IAA" : IAA_list,
+                    "Cell_num" : Cell_number, "Slices" : Slices,
+                    "Time" : time
+                    }
 	
 	
-	elif channels == 2:
-		IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
-		IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]
-		
-		raw_data = {"IDD": IDD_list, "IDA" : IDA_list,
-					"Cell_num" : Cell_number, "Slices" : Slices,
-					"Time" : time
-				    }
+    elif channels == 2:
+        IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
+        IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]
+        
+        raw_data = {"IDD": IDD_list, "IDA" : IDA_list,
+                    "Cell_num" : Cell_number, "Slices" : Slices,
+                    "Time" : time
+                    }
 
-	return raw_data
+    return raw_data
 	
 
 def three_cube(raw_data, LP):
@@ -823,7 +849,7 @@ def three_cube(raw_data, LP):
     
 
 
-def Ratiometric(raw_data):
+def Ratiometric(raw_data, parameters):
     """ Performs calculations on nested list data from two channels, 
         returns calculations as nested lists. """
 
@@ -833,8 +859,9 @@ def Ratiometric(raw_data):
     Raw_ratio = [ [ IDA / IDD for (IDA, IDD) in zip(x, y) ] 
                     for (x, y) in zip(IDA_list, IDD_list) ]
                  
-    Sergei_ratio = [ [ (IDA / IDD) - 0.33 for (IDA, IDD) in zip(x, y) ] 
-                        for (x, y) in zip(IDA_list, IDD_list) ]
+    Sergei_ratio = [[(IDA / IDD) - (float(parameters["subtr_ratio"]))
+                        for (IDA, IDD) in zip(x, y)] 
+                            for (x, y) in zip(IDA_list, IDD_list)]
     
     baseline = Cell_number * Control_num
     norm_raw, norm_Sergei = [], []
@@ -894,7 +921,7 @@ def Compositor(timepoints, channels, dirs):
   				pass
 
 
-def Backgroundremoval(dirs):
+def Backgroundremoval(dirs, parameters):
 	""" Runs rolling ball background subtraction on all channels. """
 	
 	# Processes channel 1.. etc
@@ -902,22 +929,22 @@ def Backgroundremoval(dirs):
 		for filename in filenames:
       		# Check for file extension
 			if filename.endswith(".tif"):		
-				process(dirs["Projections_C0"], root, filename)
+				process(dirs["Projections_C0"], root, filename, parameters)
 
 	for root, directories, filenames in os.walk(dirs["Projections_C1"]):
 		for filename in filenames:
       		# Check for file extension
 			if filename.endswith(".tif"):		
-				process(dirs["Projections_C1"], root, filename)
+				process(dirs["Projections_C1"], root, filename, parameters)
 
 	for root, directories, filenames in os.walk(dirs["Projections_C2"]):
 		for filename in filenames:
       		# Check for file extension
 			if filename.endswith(".tif"):		
-				process(dirs["Projections_C2"], root, filename)
+				process(dirs["Projections_C2"], root, filename, parameters)
 
  		
-def process(Destination_Directory, Current_Directory, filename):
+def process(Destination_Directory, Current_Directory, filename, parameters):
 	""" Rolling ball method. """
     
 	print "Processing:"   
@@ -931,7 +958,14 @@ def process(Destination_Directory, Current_Directory, filename):
 	#             light background, use parabaloid, do pre smoothing (3x3), 
 	# 			  correct corners
 	b = BackgroundSubtracter()	
-	b.rollingBallBackground(ip, 50, False, False, True, False, False)	
+	b.rollingBallBackground(ip, 
+	                        int(parameters["ballsize"]),
+	                        bool(parameters["create_b"]),
+	                        bool(parameters["light_b"]),
+	                        bool(parameters["parab"]),
+	                        bool(parameters["smooth"]),
+	                        bool(parameters["corners"])
+                            )
 
 	print "Saving to", Destination_Directory	
 	IJ.saveAs(imp, "Tiff", os.path.join(Destination_Directory, filename))	
