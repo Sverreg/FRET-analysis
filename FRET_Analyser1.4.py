@@ -12,6 +12,7 @@ import collections
 import ConfigParser
 import ast
 import time
+from math import sqrt
 from datetime import datetime
 
 import itertools
@@ -57,7 +58,7 @@ from java.util import Vector
 from java.awt import Font
 
 
-def FRET_analyser():
+def main():
     """ Master method and tabulator. """
 
     # Analysis timer, start.
@@ -75,7 +76,11 @@ def FRET_analyser():
     channels, timepoints, timelist, timelist_unsorted, LP, org_size = meta_parser()
             
     # User inputs
-    Input_data, Input_data_JSON, Stim_List = user_input()
+    if Stim_num >= 1:
+        Input_data, Input_data_JSON, Stim_List = user_input()
+    else:
+        Stim_List = False
+        pass
 
     # Directory spawner.
     dirs = directorator(Title, str(Root))   
@@ -144,7 +149,7 @@ def FRET_analyser():
         plots(IDD_list, timelist, raw_data["Cell_num"],
               "Donor concentration", Stim_List, dirs, parameters
               )
-        plots(raw_data["A_Conc"], timelist, raw_data["Cell_num"],
+        plots(FRET_val["A_Conc"], timelist, raw_data["Cell_num"],
               "Acceptor concentration", Stim_List, dirs, parameters
               )
 
@@ -171,12 +176,6 @@ def FRET_analyser():
             plots(FRET_value, timelist, raw_data["Cell_num"],
                   FRET_value_ID, Stim_List, dirs, parameters
                   )
-        """
-        plots(Raw_ratio, timelist, raw_data["Cell_num"], "Raw", Stim_List, dirs, parameters)
-        plots(Sergei_ratio, timelist, raw_data["Cell_num"], "Sergei", Stim_List, dirs, parameters)
-        plots(norm_Sergei, timelist, raw_data["Cell_num"], "Normalized Sergei", Stim_List, dirs, parameters)
-        plots(norm_raw, timelist, raw_data["Cell_num"], "Normalized Raw", Stim_List, dirs, parameters)
-        """
     
     # Scale, ROI color coded overlay and gif animation.
     Overlayer(org_size, dirs)
@@ -325,7 +324,7 @@ def config_read():
     if os.path.exists(con_path):        
         config.read(con_path)
 
-        # Read cfg section, return False if section ein't reel
+        # Read cfg section if cfg section exists.
         try:
             p_list = config.items("Parameters")
         except ConfigParser.NoSectionError:       
@@ -346,9 +345,10 @@ def config_read():
         print ("ERROR: Config file not found, check " + str(con_path) + " "
                "or select Advanced Settings to generate a new config file "
                )
-        raise IOError("ERROR: Config file not found, check " + str(con_path) + " "
-                      "or select Advanced Settings to generate a new config file "
-                      )
+        raise IOError(
+               "ERROR: Config file not found, check " + str(con_path) + " "
+               "or select Advanced Settings to generate a new config file "
+               )
     
     return parameters
 
@@ -390,7 +390,6 @@ def meta_parser():
     timelist = []
     for timepoint in range (imageCount):
         times = omeMeta.getImageAcquisitionDate(timepoint)
-        print type(times)
         timelist.append(times.toString())
 	
 	
@@ -464,10 +463,7 @@ def imageprojector(channels, timelist_unsorted, dirs):
 	options.setSplitChannels(True)
 	imps = BF.openImagePlus(options)
 
-	print "UNSORTED", timelist_unsorted
-	
 	timelist = [x for item in timelist_unsorted for x in repeat(item, channels)]
-	print "SORTED", timelist
 	timelist, imps = zip(*sorted(zip(timelist, imps)))
 
 	
@@ -476,7 +472,6 @@ def imageprojector(channels, timelist_unsorted, dirs):
 	counter_C2 = -1
 	# Opens all images, splits channels, z-projects and saves to disk
 	for imp in (imps):
-		print str(imp)
 		# Projection, Sum Intensity
    		project = ZProjector()
 		project.setMethod(ZProjector.SUM_METHOD)
@@ -527,7 +522,7 @@ def Composite_Aligner(channels, dirs, parameters):
     reference_name = "Timepoint000.tif"
 		
     # Shrinkage option (False = 0)
-    use_shrinking_constraint = int(parameters["shrinkage"])
+    use_shrinking_constraint = bool(parameters["shrinkage"])
 
     # Parameters method, RVSS
     p = Register_Virtual_Stack_MT.Param()
@@ -959,7 +954,7 @@ def process(Destination_Directory, Current_Directory, filename, parameters):
 	# 			  correct corners
 	b = BackgroundSubtracter()	
 	b.rollingBallBackground(ip, 
-	                        int(parameters["ballsize"]),
+	                        float(parameters["ballsize"]),
 	                        bool(parameters["create_b"]),
 	                        bool(parameters["light_b"]),
 	                        bool(parameters["parab"]),
@@ -1168,7 +1163,10 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
 
     # Call plot, set scale.
     plot = Plot(Title, "Time (minutes)", value_type)
-    plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+    if len(timelist) > 1:      
+        plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+    else:
+        plot.setLimits(-1, 1, min_Y, max_Y)
     # Retrieve colors.
     Colors, Colors_old = colorlist()
 
@@ -1193,29 +1191,33 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
             #plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.CIRCLE)
     else:
         min_Y, max_Y = 0.6, 1.6
-        plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+        if len(timelist) > 1:
+            plot.setLimits(min(timelist), max(timelist), min_Y, max_Y)
+        else: 
+            plot.setLimits(-1, 1, min_Y, max_Y)
         plot.setColor("Color.BLACK")
         plot.setLineWidth(1.5)
         plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.LINE)
         plot.setLineWidth(1)
         plot.setColor("Color.BLACK", "Color.BLACK")
-        #plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.CIRCLE)
+        plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.CIRCLE)
         plot.setColor(Color(*Colors[6][0:3]))
         plot.addErrorBars(Mean_sd[1::2])
 
     # Get's stim name from input.
-    text = [ sublist[i] for sublist in Stim_List for i in range(len(Stim_List)) ]
-    Stim_List = [ sublist[1:] for sublist in Stim_List ]
+    if not Stim_List == False:
+        text = [ sublist[i] for sublist in Stim_List for i in range(len(Stim_List)) ]
+        Stim_List = [ sublist[1:] for sublist in Stim_List ]
 
-    # Plot stimulation markers. 
-    plot.setLineWidth(2)
-    for sublist in Stim_List:
-        plot.setColor("Color.GRAY")
-        plot.drawLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[1], min_Y+((max_Y-min_Y) * 0.82))
-        plot.drawDottedLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[0], -1, 4)
-        plot.drawDottedLine(sublist[1], min_Y+((max_Y-min_Y) * 0.82), sublist[1], -1, 4)
-        plot.setFont(Font.BOLD, 16)
-        plot.addText(text[0], sublist[0], min_Y+((max_Y-min_Y) * 0.82))
+        # Plot stimulation markers. 
+        plot.setLineWidth(2)
+        for sublist in Stim_List:
+           plot.setColor("Color.GRAY")
+           plot.drawLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[1], min_Y+((max_Y-min_Y) * 0.82))
+           plot.drawDottedLine(sublist[0], min_Y+((max_Y-min_Y) * 0.82), sublist[0], -1, 4)
+           plot.drawDottedLine(sublist[1], min_Y+((max_Y-min_Y) * 0.82), sublist[1], -1, 4)
+           plot.setFont(Font.BOLD, 16)
+           plot.addText(text[0], sublist[0], min_Y+((max_Y-min_Y) * 0.82))
 
     cell_num = 0
     if "concentration" not in value_type:
@@ -1389,5 +1391,8 @@ def standard_deviation(values):
     mean_sd_list = [mean, sd]
     return mean_sd_list
 
+if __name__ in ["__main__", "__builtin__"]:
+    main()
 
-FRET_analyser()
+
+    
