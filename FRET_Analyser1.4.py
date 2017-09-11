@@ -4,7 +4,7 @@
 # @File(label="Select Image Classifier") classifier
 # @Integer(label="Control series:", description="The number of baseline measurements", value=3) Control_num
 # @Integer(label="Stimulation number:", description="The number of stimulation protocols applied", value=1) Stim_num
-# @Boolean(label="Advanced settings", description="Set processing parameters", value=False) Adv_set
+# @Boolean(label="Advanced settings", description="Set processing parameters", value=True) Adv_set
 
 import os
 import sys
@@ -66,7 +66,7 @@ def main():
 
     # If advanced settings is checked, 
     # gets parameters from user and writes to config,
-    # else; gets parameters from config file (. 
+    # else; gets parameters from config file. 
     if Adv_set == True:
         parameters = settings()
     else: 
@@ -157,20 +157,6 @@ def main():
     elif channels == 2:
         raw_data = Measurements(channels, timelist, dirs, parameters)
         FRET_val = Ratiometric(raw_data, parameters)
-
-        
-        #results_table = []
-        #table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
-
-        #[[results_table.append([a, b, c, d])for a, b, c, d in zip(s1,s2,s3,s4)]
-        #for s1,s2,s3,s4 in zip(FRET_val["Raw_ratio"], Sergei_ratio, raw_data["Slices"], raw_data["Time"])]
-
-        #table.write("\t\t".join(map(str,["Raw", "Sergei", "Slice", "Time"])))
-        #for line in range (len(results_table)):
-        #    table.write("\n")
-        #    table.write("\t\t".join(map(str,results_table[line])))
-
-        #table.close()
         
         for FRET_value_ID, FRET_value in FRET_val.iteritems():
             plots(FRET_value, timelist, raw_data["Cell_num"],
@@ -180,7 +166,7 @@ def main():
     # Scale, ROI color coded overlay and gif animation.
     Overlayer(org_size, dirs)
 
-    # Ratiometric image generator.
+    # TODO: Ratiometric image generator.
     #ratiometric(LP, org_size, max_Y, min_Y)
 
     # Done, prints/logs time used.
@@ -522,23 +508,30 @@ def Composite_Aligner(channels, dirs, parameters):
     reference_name = "Timepoint000.tif"
 		
     # Shrinkage option (False = 0)
-    use_shrinking_constraint = bool(parameters["shrinkage"])
+    if parameters["shrinkage"] == "True":
+        use_shrinking_constraint = 1
+        print "shrink"
+    else:
+        use_shrinking_constraint = 0
+        print "noshrink"
 
     # Parameters method, RVSS
     p = Register_Virtual_Stack_MT.Param()
 		
     # SIFT parameters:
-    p.sift.maxOctaveSize = int(parameters["max_oct"])
-    p.sift.fdSize = int(parameters["fd_size"])
-    p.sift.initialSigma = float(parameters["sigma"])
-    p.maxEpsilon = float(parameters["max_eps"])
-    p.sift.steps = int(parameters["steps"])
-    p.minInlierRatio = float(parameters["min_inlier"])
+    # python cannot coerce string "floats" to int directly,
+    # hence int(float("1.0")) (RVSS wants ints..).
+    p.sift.maxOctaveSize = int(float(parameters["max_oct"]))
+    p.sift.fdSize = int(float(parameters["fd_size"]))
+    p.sift.initialSigma = int(float(parameters["sigma"]))
+    p.maxEpsilon = int(float(parameters["max_eps"]))
+    p.sift.steps = int(float(parameters["steps"]))
+    p.minInlierRatio = int(float(parameters["min_inlier"]))
 	
     # 1 = RIGID, 3 = AFFINE
-    p.featuresModelIndex = int(parameters["feat_model"])
-    p.registrationModelIndex = int(parameters["reg_model"])
-	
+    p.featuresModelIndex = int(float(parameters["feat_model"]))
+    p.registrationModelIndex = int(float(parameters["reg_model"]))
+
     # Opens a dialog to set transformation options, comment out to run in default mode
     #IJ.beep()
     #p.showDialog()	
@@ -660,10 +653,10 @@ def Measurements(channels, timelist, dirs, parameters):
     for roi in reversed(range(total_rois)):
         rm.select(roi)
         size = imp.getStatistics().area		
-        if size < int(parameters["cell_min"]):
+        if size < int(float(parameters["cell_min"])):
             rm.select(roi)
             rm.runCommand('Delete')
-        elif size > int(parameters["cell_max"]):
+        elif size > int(float(parameters["cell_max"])):
             rm.select(roi)
             rm.runCommand('Delete')
         else:
@@ -940,31 +933,31 @@ def Backgroundremoval(dirs, parameters):
 
  		
 def process(Destination_Directory, Current_Directory, filename, parameters):
-	""" Rolling ball method. """
+    """ Rolling ball method. """
     
-	print "Processing:"   
-  	# Opening the image
-  	print "Open image file", filename
+    print "Processing:"   
+    # Opening the image
+    print "Open image file", filename
 	
-	imp = IJ.openImage(os.path.join(Current_Directory, filename))
-	ip = imp.getProcessor()
+    imp = IJ.openImage(os.path.join(Current_Directory, filename))
+    ip = imp.getProcessor()
 	
-	# Parameters: Image processor, Rolling Ball Radius, Create background, 
-	#             light background, use parabaloid, do pre smoothing (3x3), 
-	# 			  correct corners
-	b = BackgroundSubtracter()	
-	b.rollingBallBackground(ip, 
+    # Parameters: Image processor, Rolling Ball Radius, Create background, 
+    #             light background, use parabaloid, do pre smoothing (3x3), 
+    # 			  correct corners
+    b = BackgroundSubtracter()	
+    b.rollingBallBackground(ip, 
 	                        float(parameters["ballsize"]),
-	                        bool(parameters["create_b"]),
-	                        bool(parameters["light_b"]),
-	                        bool(parameters["parab"]),
-	                        bool(parameters["smooth"]),
-	                        bool(parameters["corners"])
+	                        ast.literal_eval(parameters["create_b"]),
+	                        ast.literal_eval(parameters["light_b"]),
+	                        ast.literal_eval(parameters["parab"]),
+	                        ast.literal_eval(parameters["smooth"]),
+	                        ast.literal_eval(parameters["corners"])
                             )
 
-	print "Saving to", Destination_Directory	
-	IJ.saveAs(imp, "Tiff", os.path.join(Destination_Directory, filename))	
-	imp.close()
+    print "Saving to", Destination_Directory	
+    IJ.saveAs(imp, "Tiff", os.path.join(Destination_Directory, filename))	
+    imp.close()
 
 
 def Overlayer(org_size, dirs):
