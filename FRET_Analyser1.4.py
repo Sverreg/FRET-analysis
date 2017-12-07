@@ -5,7 +5,7 @@
 # @Integer(label="Control series:", description="The number of baseline measurements", value=3) Control_num
 # @Integer(label="Stimulation number:", description="The number of stimulation protocols applied", value=1) Stim_num
 # @Boolean(label="Advanced settings", description="Set processing parameters", value=True) Adv_set
-#test
+
 import os
 import sys
 import collections
@@ -58,7 +58,7 @@ from java.util import Vector
 from java.awt import Font
 
 
-def main():
+def jyFRET():
     """ Master method and tabulator. """
 
     # Analysis timer, start.
@@ -113,43 +113,25 @@ def main():
         raw_data = Measurements(channels, timelist, dirs, parameters)   
         FRET_val, cFRET = three_cube(raw_data, LP)
 
-        # Tabulator.
-        results_table = []
-        table = open(os.path.join(dirs["Tables"], "Resultstable.txt"), "w")
-
-        [[results_table.append([a, b, c, d, e, f])for a, b, c, d, e, f in zip(s1,s2,s3,s4,s5,s6)]
-                               for s1,s2,s3,s4,s5,s6 in zip(FRET_val["Raw"], cFRET, FRET_val["dFRET"], 
-                                   FRET_val["aFRET"], raw_data["Slices"], raw_data["Time"])
-                                ]
-                                                        
-        table.write("\t\t\t".join(map(str,["Raw", "cFRET", "dFRET", "aFRET", "Slice", "Time "])))
-        table.write(("_")*128)
-        for line in range (len(results_table)):
-            table.write("\n")
-            table.write("\n")
-            table.write("\t\t\t".join(map(str,results_table[line])))
-
-        table.close()
-
         # Plot FRET values from dict.
         for FRET_value_ID, FRET_value in FRET_val.iteritems():
-            plots(FRET_value, timelist, raw_data["Cell_num"],
+            plots(FRET_value, timelist, raw_data["region_num"],
                   FRET_value_ID, Stim_List, dirs, parameters
                   )
-    
-        
-        # This plot-call returns scale.
-        max_Y, min_Y = plots(FRET_val["Raw"], timelist, raw_data["Cell_num"],
+     
+        # This plot-call returns plot scale.
+        max_Y, min_Y = plots(FRET_val["Raw"], timelist, raw_data["region_num"],
                              "Raw", Stim_List, dirs, parameters)
 
-        # Corrects donor concentration, plots concentrations.
+        # Corrects donor concentration (total donor #
+        # vs free donor only), plots concentrations.#
         IDD_list = [[IDD + CFRET for (IDD, CFRET) in zip(x, y)] 
                    for (x, y) in zip(raw_data["IDD"], cFRET)]
 
-        plots(IDD_list, timelist, raw_data["Cell_num"],
+        plots(IDD_list, timelist, raw_data["region_num"],
               "Donor concentration", Stim_List, dirs, parameters
               )
-        plots(FRET_val["A_Conc"], timelist, raw_data["Cell_num"],
+        plots(FRET_val["A_Conc"], timelist, raw_data["region_num"],
               "Acceptor concentration", Stim_List, dirs, parameters
               )
 
@@ -159,7 +141,7 @@ def main():
         FRET_val = Ratiometric(raw_data, parameters)
         
         for FRET_value_ID, FRET_value in FRET_val.iteritems():
-            plots(FRET_value, timelist, raw_data["Cell_num"],
+            plots(FRET_value, timelist, raw_data["region_num"],
                   FRET_value_ID, Stim_List, dirs, parameters
                   )
     
@@ -169,7 +151,7 @@ def main():
     # TODO: Ratiometric image generator.
     #ratiometric(LP, org_size, max_Y, min_Y)
 
-    # Done, prints/logs time used.
+    # Finished, prints/logs time used.
     print ("Finished analysis in: "+str(datetime.now()-startTime))
     IJ.log("Finished analysis in: "+str(datetime.now()-startTime))
 
@@ -339,7 +321,8 @@ def config_read():
     return parameters
 
 def meta_parser():
-    """ Iterates through .lif XML/OME metadata, returns selected values eg. timepoints, channels, series count, laser power.. """
+    """ Iterates through .lif XML/OME metadata, returns selected values
+        eg. timepoints, channels, series count, laser power.. """
 
     # Get metadata.
     reader = ImageReader()
@@ -371,8 +354,6 @@ def meta_parser():
     else:
         LP = 0
 
-
-
     timelist = []
     for timepoint in range (imageCount):
         times = omeMeta.getImageAcquisitionDate(timepoint)
@@ -382,7 +363,6 @@ def meta_parser():
     # YY.MM... to minutes.
     timelist =[ time.mktime(time.strptime(times, u'%Y-%m-%dT%H:%M:%S')) for times in timelist ]
     timelist_unsorted =[ (times - timelist[0])/60 for times in timelist ]
-
     timelist = sorted(timelist_unsorted)
 
     # Prints to log.
@@ -390,13 +370,13 @@ def meta_parser():
     IJ.log("Total # of image series (from OME metadata): " + str(imageCount))
     IJ.log("Total # of channels (from OME metadata): " + str(channels))
     IJ.log("Laserpower (from OME metadata): " + str(LP))
+    
     return channels, seriesCount, timelist, timelist_unsorted, LP, org_size
 
 
-
 def directorator(Title, Root):
-    """ Creates all required directories, adds (#) if experiment """
-    """ replicates exist, returns dict of directory paths.      """
+    """ Creates all required directories, adds (#) if experiment
+        replicates exist, returns dict of directory paths.       """
 
     if not os.path.exists(Root):
         os.makedirs(Root)
@@ -409,7 +389,6 @@ def directorator(Title, Root):
         Exp_root = Exp_root_base + "(%d)" % (Replicate)
         Replicate += 1
         
-    
     os.makedirs(Exp_root)
 
     subdirs = [
@@ -438,7 +417,8 @@ def imageprojector(channels, timelist_unsorted, dirs):
 
 	# BF Importer
 	options = ImporterOptions()
-	
+
+    ## TODO ##
 	try:
 		options.setId(path)
 	except Exception(e):
@@ -452,7 +432,6 @@ def imageprojector(channels, timelist_unsorted, dirs):
 	timelist = [x for item in timelist_unsorted for x in repeat(item, channels)]
 	timelist, imps = zip(*sorted(zip(timelist, imps)))
 
-	
 	counter_C0 = -1
 	counter_C1 = -1
 	counter_C2 = -1
@@ -493,7 +472,7 @@ def imageprojector(channels, timelist_unsorted, dirs):
                          
 				IJ.saveAs(impout, "TIFF", os.path.join(dirs["Projections_C2"],
 				          "Scan" + str(counter_C2).zfill(3) + "C2"))
-		
+		### TODO ###
 		except IOException:
 			print "Directory does not exist"
 			raise
@@ -502,7 +481,8 @@ def imageprojector(channels, timelist_unsorted, dirs):
 
 	
 def Composite_Aligner(channels, dirs, parameters):
-    """ Aligns composite images, saves to directory. """
+    """ Aligns composite images, saves to directory using
+        the register virtual stack slices plugin (RVSS). """
 		
     # Reference image name (must be within source directory)	
     reference_name = "Timepoint000.tif"
@@ -510,72 +490,64 @@ def Composite_Aligner(channels, dirs, parameters):
     # Shrinkage option (False = 0)
     if parameters["shrinkage"] == "True":
         use_shrinking_constraint = 1
-        print "shrink"
     else:
         use_shrinking_constraint = 0
-        print "noshrink"
 
     # Parameters method, RVSS
     p = Register_Virtual_Stack_MT.Param()
 		
     # SIFT parameters:
     # python cannot coerce string "floats" to int directly,
-    # hence int(float("1.0")) (RVSS wants ints..).
+    # hence int(float("1.0")), (RVSS wants ints..).
     p.sift.maxOctaveSize = int(float(parameters["max_oct"]))
     p.sift.fdSize = int(float(parameters["fd_size"]))
     p.sift.initialSigma = int(float(parameters["sigma"]))
     p.maxEpsilon = int(float(parameters["max_eps"]))
     p.sift.steps = int(float(parameters["steps"]))
     p.minInlierRatio = int(float(parameters["min_inlier"]))
-	
-    # 1 = RIGID, 3 = AFFINE
     p.featuresModelIndex = int(float(parameters["feat_model"]))
     p.registrationModelIndex = int(float(parameters["reg_model"]))
 
-    # Opens a dialog to set transformation options, comment out to run in default mode
+    # Opens a dialog to set transformation parsameter, 
+    # comment out to run in default mode.
     #IJ.beep()
     #p.showDialog()	
 
     # Executes alignment.
     print ("Registering stack...")
-	
     reference_name = "Timepoint000.tif"
     Register_Virtual_Stack_MT.exec(dirs["Composites"] + os.sep, 
 	                               dirs["Composites_Aligned"] + os.sep,
 	                               dirs["Transformations"] + os.sep,
-	                               reference_name, p, use_shrinking_constraint)
+	                               reference_name, p, use_shrinking_constraint
+                                   )
 
     print ("Registration completed.")
     # Close alignment window.
-    imp = WindowManager.getCurrentImage()
-    imp.close()
+    IJ.run("Close All")
 
 def Transformer(channels, dirs):
-    """ Applies transformation matrices from Composite_Aligner to all raw, 32-bit projections. """
+    """ Applies transformation matrices from Composite_Aligner
+        to all raw, 32-bit sum-projections. Uses the transform
+        virtual stack slices plugin (TVSS). """
 
     # Executes transformations for each channel.
     t = register_virtual_stack.Transform_Virtual_Stack_MT
-
     print "Transforming channel 0..."
     t.exec(dirs["Projections_C0"] + os.sep,
 	       dirs["Aligned_All"] + os.sep,
 	       dirs["Transformations"] + os.sep,
 	       True)
-
     print "Channel 0 transformed."
-    imp = WindowManager.getCurrentImage()
-    imp.close()
-
+    IJ.run("Close All")
+    
     print "Transforming channel 1..."
     t.exec(dirs["Projections_C1"] + os.sep,
 	       dirs["Aligned_All"] + os.sep, 
 	       dirs["Transformations"] + os.sep, 
 	       True)
-
     print "Channel 1 transformed."
-    imp = WindowManager.getCurrentImage()
-    imp.close()
-
+    IJ.run("Close All")
 
     if channels == 3:
         print "Transforming channel 2..."
@@ -583,15 +555,14 @@ def Transformer(channels, dirs):
 		       dirs["Aligned_All"] + os.sep,
 		       dirs["Transformations"] + os.sep, 
 		       True)
-
         print "Channel 2 transformed."
-        imp = WindowManager.getCurrentImage()
-        imp.close()
+        IJ.run("Close All")
 
-	
+
 def Weka_Segm(dirs):
-	""" Loads trained classifier and segments cells """ 
-	"""	in aligned images according to training.    """
+	""" Loads trained classifier and segments cells in aligned images
+	    according to training using the Trainable Weka Segmentation
+	    plugin. (method adapted from TWS beanshell template script). """
 	
 	# Define reference image for segmentation (default is timepoint000).
 	w_train = os.path.join(dirs["Composites_Aligned"], "Timepoint000.tif")
@@ -640,7 +611,7 @@ def Measurements(channels, timelist, dirs, parameters):
     an.setMeasurements(an.AREA + an.MEAN + an.MIN_MAX + an.SLICE)
 
     # Opens raw-projections as stack.
-    test = IJ.run("Image Sequence...",
+    img_stack = IJ.run("Image Sequence...",
 	              "open=" + dirs["Aligned_All"]
 	              + " number=400 starting=1 increment=1 scale=400 file=.tif sort")
 
@@ -659,8 +630,6 @@ def Measurements(channels, timelist, dirs, parameters):
         elif size > int(float(parameters["cell_max"])):
             rm.select(roi)
             rm.runCommand('Delete')
-        else:
-            rm.runCommand("Deselect")
 
     # Confirm that ROI selection is Ok (comment out for headless run).
     WaitForUserDialog("ROI check", "Control ROI selection, then click OK").show() 
@@ -670,61 +639,54 @@ def Measurements(channels, timelist, dirs, parameters):
     rm.runCommand("Select All")	
     rm.runCommand("multi-measure measure_all One row per slice")		
 	
-    # Close.
     imp = WindowManager.getCurrentImage()
     imp.close()
 
     # Get measurement results.
     rt = ResultsTable.getResultsTable()
-    Area = rt.getColumn(0)
-    Mean = rt.getColumn(1)
-    Slice = rt.getColumn(27)
-	
-    # Removes (and counts) artefact ROIs (redundant)
-    # Area indices without outliers
-    Area_indices = [index for (index, value) in enumerate(Area, start=0)
-	                if value > 0 and value < 9999999]
-	
-    # Mean without outliers from area (redundant)
-    Filtered_mean = [Mean[index] for index in Area_indices]
-    Filtered_slice = [Slice[index] for index in Area_indices]
+    area = rt.getColumn(0)
+    mean_i = rt.getColumn(1)
+    slice_num = rt.getColumn(27)
 
     # Number of cell selections.
-    Cell_number = Filtered_slice.count(1.0)
-    rm = RoiManager.getInstance()
-    print "Number of selected cells: ", Cell_number
-    print "Total number of selections: ", rm.getCount()
+    region_num = slice_num.count(1.0)
+    print "Number of selected regions: ", region_num
 
-    Cells = [ Filtered_mean [x : x + Cell_number]
-	          for x in xrange (0, len(Filtered_mean), Cell_number) ]
+    mean_c = [mean_i [x : x + region_num]
+	          for x in xrange (0, len(mean_i), region_num)]
               	
-    Cells_indices = [ index for (index, value) in enumerate(Cells) ]
+    mean_c_ind = [index for (index, value) in enumerate(mean_c)]
+
+    # Generate proportional list of timepoints.
+    timepoints = [x for item in timelist for x in repeat(item, region_num)]
+    timepoints = [timepoints [x : x + region_num]
+                  for x in xrange (0, len(timepoints), region_num)]
+
+    # Slice_num nested list.
+    slices = [slice_num [x : x + region_num]
+	          for x in xrange (0, len(slice_num), region_num)]
 	
-    time = [ x for item in timelist for x in repeat(item, Cell_number) ]
-    time = [ time [x : x + Cell_number] for x in xrange (0, len(time), Cell_number) ]
-	
-    Slices = [ Filtered_slice [x : x + Cell_number]
-	           for x in xrange (0, len(Filtered_slice), Cell_number) ]
-	
-    # Lists IDD, IDA + IAA if 3ch.
+    # Lists IDD, IDA + IAA if 3ch per timepoint 
+    # IDD_list = [[R0C0T0, R1C0T0, ...], [R0C0T1, R1C0T1, ...], ...]
+    # where R = region, C = channel, T = time.
     if channels == 3:
-        IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
-        IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]    
-        IAA_list = [ Cells [index] for index in Cells_indices [2::int(channels)] ]
+        IDD_list = [mean_c [index] for index in mean_c_ind [0::int(channels)]]
+        IDA_list = [mean_c [index] for index in mean_c_ind [1::int(channels)]]    
+        IAA_list = [mean_c [index] for index in mean_c_ind [2::int(channels)]]
         
         raw_data = {"IDD" : IDD_list, "IDA" : IDA_list, "IAA" : IAA_list,
-                    "Cell_num" : Cell_number, "Slices" : Slices,
-                    "Time" : time
+                    "region_num" : region_num, "Slices" : slices,
+                    "Time" : timepoints
                     }
-	
-	
+
+    # Lists IDD, IDA.
     elif channels == 2:
-        IDD_list = [ Cells [index] for index in Cells_indices [0::int(channels)] ]
-        IDA_list = [ Cells [index] for index in Cells_indices [1::int(channels)] ]
+        IDD_list = [ mean_c [index] for index in mean_c_ind [0::int(channels)] ]
+        IDA_list = [ mean_c [index] for index in mean_c_ind [1::int(channels)] ]
         
         raw_data = {"IDD": IDD_list, "IDA" : IDA_list,
-                    "Cell_num" : Cell_number, "Slices" : Slices,
-                    "Time" : time
+                    "region_num" : region_num, "Slices" : slices,
+                    "Time" : timepoints
                     }
 
     return raw_data
@@ -737,41 +699,43 @@ def three_cube(raw_data, LP):
     # Direct excitation of acceptor, AER, and 
     # donor emission bleedthrough, DER, cofficients.
     # (Determined experimentally.)
+    # [TODO] get these from input and_or config.
     AER = ((8.8764*(LP**2)) + (1.8853*LP)) - 0.1035 
     DER = 0.1586
 
+    # Unpack raw_data.
     IDD_list, IDA_list, IAA_list = raw_data["IDD"], raw_data["IDA"], raw_data["IAA"]
-    
-    Cell_number = raw_data["Cell_num"]
+    region_num = raw_data["region_num"]
     
     # Calculations.
-    Raw_ratio = [ [ IDA / IDD for (IDA, IDD) in zip(x, y) ] for (x, y) in zip(IDA_list, IDD_list) ]
+    Raw_ratio = [[IDA / IDD for (IDA, IDD) in zip(x, y)]
+                  for (x, y) in zip(IDA_list, IDD_list)]
     
-    cFRET = [ [ IDA - (AER*IAA) - (DER*IDD) 
-                for (IDA, IAA, IDD) in zip(x, y, z) ] 
-                for (x, y, z) in zip(IDA_list, IAA_list, IDD_list) ]
+    cFRET = [[IDA - (AER*IAA) - (DER*IDD) 
+              for (IDA, IAA, IDD) in zip(x, y, z)] 
+              for (x, y, z) in zip(IDA_list, IAA_list, IDD_list)]
     
-    dFRET = [ [ (IDA - (AER*IAA) - (DER*IDD)) / (IDD + CFRET) 
-                for (IDA, IDD, IAA, CFRET) in zip(x, y, z, c) ] 
-                for (x, y, z, c) in zip(IDA_list, IDD_list, IAA_list, cFRET) ]
+    dFRET = [[(IDA - (AER*IAA) - (DER*IDD)) / (IDD + CFRET) 
+               for (IDA, IDD, IAA, CFRET) in zip(x, y, z, c)] 
+               for (x, y, z, c) in zip(IDA_list, IDD_list, IAA_list, cFRET)]
     
-    aFRET = [ [ ((IDA - (AER*IAA) - (DER*IDD)) / (IAA*AER))/4.66 
-                for (IDA, IDD, IAA) in zip(x, y, z) ] 
-                for (x, y, z) in zip(IDA_list, IDD_list, IAA_list) ]    
-    
-    dtoa = [ [ ((IDD + CFRET)/4.66) / (IAA*AER) 
-                for (IDD, CFRET, IAA) in zip(x, y, z) ] 
-                for (x, y, z) in zip(IDD_list, cFRET, IAA_list) ]
+    aFRET = [[((IDA - (AER*IAA) - (DER*IDD)) / (IAA*AER))/4.66 
+                for (IDA, IDD, IAA) in zip(x, y, z)] 
+                for (x, y, z) in zip(IDA_list, IDD_list, IAA_list)]    
+    print aFRET
+    d_to_a_ratio = [[((IDD + CFRET)/4.66) / (IAA*AER) 
+                       for (IDD, CFRET, IAA) in zip(x, y, z)] 
+                       for (x, y, z) in zip(IDD_list, cFRET, IAA_list)]
     
     # Flattens nested lists for normalization function.
     flat_aFRET = [item for sublist in aFRET for item in sublist]
     flat_dFRET = [item for sublist in dFRET for item in sublist]
     flat_raw = [item for sublist in Raw_ratio for item in sublist]
 
-    aFRET_base = flat_aFRET [0:Cell_number]
+    aFRET_base = flat_aFRET [0:region_num]
     aFRET_base_mean = standard_deviation(aFRET_base)
     
-    dFRET_base = flat_dFRET [0:Cell_number]
+    dFRET_base = flat_dFRET [0:region_num]
     dFRET_base_mean = standard_deviation(dFRET_base)
 
     
@@ -779,30 +743,30 @@ def three_cube(raw_data, LP):
     norm_aFRET, norm_aFRET_self = [], []
     norm_dFRET, norm_dFRET_self = [], []
     norm_raw, norm_raw_self = [], []
-    baseline = Cell_number * Control_num
+    baseline = region_num * Control_num
     
-    for cell in range(Cell_number):
-                    # Divides value 0->max by baseline point 0-Cell_number for each cell.
-            norm_aFRET.append([ (flat_aFRET[v]) / ((sum(flat_aFRET[cell:baseline:Cell_number]))
-                                /len(flat_aFRET[cell:baseline:Cell_number])) 
-                                for v in range(cell, len(flat_aFRET), Cell_number)])
+    for cell in range(region_num):
+                    # Divides value 0->max by baseline point 0-region_num for each cell.
+            norm_aFRET.append([ (flat_aFRET[v]) / ((sum(flat_aFRET[cell:baseline:region_num]))
+                                /len(flat_aFRET[cell:baseline:region_num])) 
+                                for v in range(cell, len(flat_aFRET), region_num)])
             
-            norm_dFRET.append([ (flat_dFRET[v]) / ((sum(flat_dFRET[cell:baseline:Cell_number]))
-                                /len(flat_dFRET[cell:baseline:Cell_number]))
-                                for v in range(cell, len(flat_dFRET), Cell_number)])
+            norm_dFRET.append([ (flat_dFRET[v]) / ((sum(flat_dFRET[cell:baseline:region_num]))
+                                /len(flat_dFRET[cell:baseline:region_num]))
+                                for v in range(cell, len(flat_dFRET), region_num)])
                     
-            norm_raw.append([ (flat_raw[v]) / ((sum(flat_raw[cell:baseline:Cell_number]))
-                              /len(flat_raw[cell:baseline:Cell_number])) 
-                              for v in range(cell, len(flat_raw), Cell_number)])
+            norm_raw.append([ (flat_raw[v]) / ((sum(flat_raw[cell:baseline:region_num]))
+                              /len(flat_raw[cell:baseline:region_num])) 
+                              for v in range(cell, len(flat_raw), region_num)])
             
             norm_aFRET_self.append([ (flat_aFRET[v]) / (flat_aFRET[cell])
-                                     for v in range(cell, len(flat_aFRET), Cell_number)])
+                                     for v in range(cell, len(flat_aFRET), region_num)])
             
             norm_dFRET_self.append([ (flat_dFRET[v]) / (flat_dFRET[cell]) 
-                                     for v in range(cell, len(flat_dFRET), Cell_number)])   
+                                     for v in range(cell, len(flat_dFRET), region_num)])   
             
             norm_raw_self.append([ (flat_raw[v]) / (flat_raw[cell])
-                                    for v in range(cell, len(flat_raw), Cell_number)])
+                                    for v in range(cell, len(flat_raw), region_num)])
             
     # Zips [[cell1],[cell2]] to [[time1],[time2]].
     norm_aFRET = list(chain.from_iterable(zip(*norm_aFRET)))
@@ -817,7 +781,7 @@ def three_cube(raw_data, LP):
     dFRET = [ [round(float(i), 3) for i in nested] for nested in dFRET ]
     aFRET = [ [round(float(i), 3) for i in nested] for nested in aFRET ]
     cFRET = [ [int(i) for i in nested] for nested in cFRET ]
-    dtoa = [ [round(float(i), 3) for i in nested] for nested in dtoa ]
+    d_to_a_ratio = [ [round(float(i), 3) for i in nested] for nested in d_to_a_ratio ]
     norm_aFRET = [round(float(i), 5) for i in norm_aFRET]
     norm_dFRET = [round(float(i), 5) for i in norm_dFRET]
     norm_raw = [round(float(i), 5) for i in norm_raw]
@@ -826,7 +790,7 @@ def three_cube(raw_data, LP):
 
     # TODO: REMOVE UNWANTED PLOT VALUES, cFRET GOES SOLO
     FRET_val = {"dFRET" : dFRET, "aFRET" : aFRET,
-                "Raw" : Raw_ratio, "DtoA" : dtoa, 
+                "Raw" : Raw_ratio, "d_to_a_ratio" : d_to_a_ratio, 
                 "A_Conc" : A_Conc, "Normalized aFRET" : norm_aFRET, 
                 "Normalized dFRET" : norm_dFRET, 
                 "Normalized aFRET mean" : norm_aFRET_self,
@@ -842,7 +806,7 @@ def Ratiometric(raw_data, parameters):
         returns calculations as nested lists. """
 
     IDD_list, IDA_list = raw_data["IDD"], raw_data["IDA"]
-    Cell_number = raw_data["Cell_num"]
+    region_num = raw_data["region_num"]
     # Calculations
     Raw_ratio = [ [ IDA / IDD for (IDA, IDD) in zip(x, y) ] 
                     for (x, y) in zip(IDA_list, IDD_list) ]
@@ -851,21 +815,21 @@ def Ratiometric(raw_data, parameters):
                         for (IDA, IDD) in zip(x, y)] 
                             for (x, y) in zip(IDA_list, IDD_list)]
     
-    baseline = Cell_number * Control_num
+    baseline = region_num * Control_num
     norm_raw, norm_Sergei = [], []
 
     flat_raw = [item for sublist in Raw_ratio for item in sublist]
 
     flat_Sergei = [item for sublist in Sergei_ratio for item in sublist]
     
-    for cell in range(Cell_number):
-        norm_raw.append([ (flat_raw[v]) / ((sum(flat_raw[cell:baseline:Cell_number]))
-                          /len(flat_raw[cell:baseline:Cell_number])) 
-                          for v in range(cell, len(flat_raw), Cell_number)])
+    for cell in range(region_num):
+        norm_raw.append([ (flat_raw[v]) / ((sum(flat_raw[cell:baseline:region_num]))
+                          /len(flat_raw[cell:baseline:region_num])) 
+                          for v in range(cell, len(flat_raw), region_num)])
                           
-        norm_Sergei.append([ (flat_Sergei[v]) / ((sum(flat_Sergei[cell:baseline:Cell_number]))
-                             /len(flat_Sergei[cell:baseline:Cell_number]))
-                             for v in range(cell, len(flat_Sergei), Cell_number)])
+        norm_Sergei.append([ (flat_Sergei[v]) / ((sum(flat_Sergei[cell:baseline:region_num]))
+                             /len(flat_Sergei[cell:baseline:region_num]))
+                             for v in range(cell, len(flat_Sergei), region_num)])
     
     norm_raw = list(chain.from_iterable(zip(*norm_raw)))
     norm_Sergei = list(chain.from_iterable(zip(*norm_Sergei)))
@@ -1080,18 +1044,18 @@ def user_input():
 	return User_Input_Dict, User_Input_Dict_JSON, Stim_List
 
 
-def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters):
+def plots(values, timelist, region_num, value_type, Stim_List, dirs, parameters):
     """ Plots all calculated values, saves plots to generated directory, returns plot scale. """
 
     Mean_plot = 0
     # Flatten nested lists (normalized lists are not nested).
     if value_type == "Normalized aFRET mean":    
-        values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
+        values_concat = [ values[i:i+region_num] for i in range(0, (len(values)), region_num) ]
         Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
         Mean_sd = [item for sublist in Mean_sd for item in sublist]
         Mean_plot = 1
     elif value_type == "Normalized dFRET mean":
-        values_concat = [ values[i:i+Cell_number] for i in range(0, (len(values)), Cell_number) ]
+        values_concat = [ values[i:i+region_num] for i in range(0, (len(values)), region_num) ]
         Mean_sd = [ standard_deviation(values_concat[i]) for i in range(len(values_concat)) ]
         Mean_sd = [item for sublist in Mean_sd for item in sublist]
         Mean_plot = 1
@@ -1100,8 +1064,8 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
         if "Normalized" not in value_type:
             values = [item for sublist in values for item in sublist]
 
-    #Repeats list items x cell_number (match timepoints with # of cells).
-    timelist = [x for item in timelist for x in repeat(item, Cell_number)]
+    #Repeats list items x region_num (match timepoints with # of cells).
+    timelist = [x for item in timelist for x in repeat(item, region_num)]
 
     # Scaling of plots.
     max_Y = 1
@@ -1165,7 +1129,7 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
 
     # Set colors, plot points.
     if Mean_plot == 0:
-        for i in range(Cell_number):
+        for i in range(region_num):
             if i < 19:
                 plot.setColor(Color(*Colors[i][0:3]))
             elif i >= 19:
@@ -1176,12 +1140,12 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
                 return
                     
             plot.setLineWidth(1.5)
-            plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.LINE)
+            plot.addPoints(timelist[i :: region_num], values[i :: region_num], Plot.LINE)
             plot.setLineWidth(1)
 
             # Comment in to define color + fillcolor for circles.
             plot.setColor(Color(*Colors[i][0:3]), Color(*Colors[i][0:3]))
-            #plot.addPoints(timelist[i :: Cell_number], values[i :: Cell_number], Plot.CIRCLE)
+            #plot.addPoints(timelist[i :: region_num], values[i :: region_num], Plot.CIRCLE)
     else:
         min_Y, max_Y = 0.6, 1.6
         if len(timelist) > 1:
@@ -1190,10 +1154,10 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
             plot.setLimits(-1, 1, min_Y, max_Y)
         plot.setColor("Color.BLACK")
         plot.setLineWidth(1.5)
-        plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.LINE)
+        plot.addPoints(timelist[0 :: region_num], Mean_sd[0::2], Plot.LINE)
         plot.setLineWidth(1)
         plot.setColor("Color.BLACK", "Color.BLACK")
-        plot.addPoints(timelist[0 :: Cell_number], Mean_sd[0::2], Plot.CIRCLE)
+        plot.addPoints(timelist[0 :: region_num], Mean_sd[0::2], Plot.CIRCLE)
         plot.setColor(Color(*Colors[6][0:3]))
         plot.addErrorBars(Mean_sd[1::2])
 
@@ -1212,7 +1176,7 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
            plot.setFont(Font.BOLD, 16)
            plot.addText(text[0], sublist[0], min_Y+((max_Y-min_Y) * 0.82))
 
-    cell_num = 0
+    region_num = 0
     if "concentration" not in value_type:
         testfile = open(os.path.join(dirs["Tables"], value_type + ".txt"), "w")
         data = plot.getResultsTable()
@@ -1221,10 +1185,10 @@ def plots(values, timelist, Cell_number, value_type, Stim_List, dirs, parameters
         for heading in headings:         
             index = data.getColumnIndex(heading)
             if "Y" in heading:
-                column = { "Cell "+str(cell_num).zfill(2) : [round(float(i), 4) for i in data.getColumn(index)] }
+                column = { "Cell "+str(region_num).zfill(2) : [round(float(i), 4) for i in data.getColumn(index)] }
             elif "X" in heading:
                 column = {"X" : [round(float(i), 4) for i in data.getColumn(index)] }
-            cell_num += 1
+            region_num += 1
             datadict.update(column)
 
         sorted_data = []
@@ -1385,7 +1349,7 @@ def standard_deviation(values):
     return mean_sd_list
 
 if __name__ in ["__main__", "__builtin__"]:
-    main()
+    jyFRET()
 
 
     
